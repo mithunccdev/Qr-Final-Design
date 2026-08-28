@@ -5,7 +5,7 @@
 // Supabase (`master_data` table) with a localStorage offline cache.
 // ════════════════════════════════════════════════════════════════════════════
 
-export type MasterDataType = 'plant' | 'vendor' | 'financial_year' | 'month' | 'category' | 'group' | 'color' | 'warranty' | 'variable';
+export type MasterDataType = 'plant' | 'vendor' | 'financial_year' | 'month' | 'category' | 'group' | 'color' | 'warranty' | 'variable' | 'serial_logic' | 'batch_logic';
 
 export interface MasterDataOption {
     code: string;           // unique id used in dropdowns / stored on products
@@ -157,7 +157,9 @@ export const MASTER_DATA_TYPES: { type: MasterDataType; label: string; icon: str
     { type: 'group', label: 'Product Groups', icon: '📦' },
     { type: 'color', label: 'Color / Finish', icon: '🎨' },
     { type: 'warranty', label: 'Warranty', icon: '🛡️' },
-    { type: 'variable', label: 'Product Variables & Label Tags', icon: '🏷️' }
+    { type: 'variable', label: 'Product Variables & Label Tags', icon: '🏷️' },
+    { type: 'serial_logic', label: 'Serial No Logic', icon: '🔢' },
+    { type: 'batch_logic', label: 'Batch No Logic', icon: '📦' }
 ];
 
 /** Replace the local cache with a freshly-fetched DB list (DB is source of truth). */

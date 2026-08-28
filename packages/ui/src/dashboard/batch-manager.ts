@@ -2,6 +2,7 @@ import { StickerLayout } from 'qrlayout-core';
 import type { EntitySchema } from '../types';
 import { PREBUILT_TEMPLATES } from './templates-data';
 import { ProductRecord, SerializedUnit } from './product-manager';
+import { getBatchLogicRule, generateBatchNumberPreview } from './serial-batch-logic';
 
 export interface BatchRecord {
     id: string;
@@ -503,8 +504,15 @@ export class BatchManagerView {
         if (!modalRoot) return;
 
         const isEdit = Boolean(existingBatch);
-        const defaultBatchCode = existingBatch?.batchNumber || `BAT-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(this.batches.length + 1).padStart(3, '0')}`;
         const defaultProd = this.products.find(p => p.id === existingBatch?.productId) || this.products[0];
+        const plant = existingBatch?.plant || defaultProd?.plant || 'KSPL';
+        const rule = getBatchLogicRule(plant);
+        const preview = generateBatchNumberPreview(rule, {
+            plant,
+            product: defaultProd,
+            sequence: this.batches.length + 1
+        });
+        const defaultBatchCode = existingBatch?.batchNumber || preview.code;
 
         modalRoot.innerHTML = `
         <div class="modal-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
@@ -526,9 +534,9 @@ export class BatchManagerView {
                         <div class="form-group">
                             <label style="font-weight: 700; font-size: 0.8125rem;">Manufacturing Plant *</label>
                             <select id="bm-plant" class="filter-dropdown" style="width: 100%;">
-                                <option value="KSPL" ${existingBatch?.plant === 'KSPL' ? 'selected' : ''}>KSPL - Kajaria Sanitaryware</option>
-                                <option value="KGPL" ${existingBatch?.plant === 'KGPL' ? 'selected' : ''}>KGPL - Kajaria Gailpur</option>
-                                <option value="KBPL" ${existingBatch?.plant === 'KBPL' ? 'selected' : ''}>KBPL - Kajaria Bathware</option>
+                                <option value="KSPL" ${plant === 'KSPL' ? 'selected' : ''}>KSPL - Kajaria Sanitaryware</option>
+                                <option value="KGPL" ${plant === 'KGPL' ? 'selected' : ''}>KGPL - Kajaria Gailpur</option>
+                                <option value="KBPL" ${plant === 'KBPL' ? 'selected' : ''}>KBPL - Kajaria Bathware</option>
                             </select>
                         </div>
                     </div>

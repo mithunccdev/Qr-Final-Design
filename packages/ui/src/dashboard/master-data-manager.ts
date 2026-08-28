@@ -7,6 +7,20 @@ import {
     updateMasterData,
     deleteMasterData
 } from './master-data';
+import {
+    SerialNumberLogicRule,
+    BatchNumberLogicRule,
+    loadSerialLogicRules,
+    saveSerialLogicRule,
+    getSerialLogicRule,
+    loadBatchLogicRules,
+    saveBatchLogicRule,
+    getBatchLogicRule,
+    generateSerialNumberPreview,
+    generateBatchNumberPreview,
+    DEFAULT_SERIAL_RULES,
+    DEFAULT_BATCH_RULES
+} from './serial-batch-logic';
 import { supabaseService } from '../supabase';
 
 type ViewMode = 'list' | 'create' | 'edit';
@@ -16,6 +30,7 @@ export class MasterDataManagerView {
     private activeType: MasterDataType = 'plant';
     private view: ViewMode = 'list';
     private editingCode: string | null = null;
+    private selectedPlantForRule = 'ALL';
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -31,6 +46,8 @@ export class MasterDataManagerView {
     private isFinancialYear() { return this.activeType === 'financial_year'; }
     private isMonth() { return this.activeType === 'month'; }
     private isVariable() { return this.activeType === 'variable'; }
+    private isSerialLogic() { return this.activeType === 'serial_logic'; }
+    private isBatchLogic() { return this.activeType === 'batch_logic'; }
 
     /** Types that support Code for Serial number and Code for Batch number */
     private supportsSerialAndBatchCode(): boolean {
@@ -53,6 +70,10 @@ export class MasterDataManagerView {
                 return 'Product groups with serial and batch code segments.';
             case 'variable':
                 return 'Common variables shared by all products.';
+            case 'serial_logic':
+                return 'Define serialization structure, segment inclusions, sequence length, and start numbers per plant.';
+            case 'batch_logic':
+                return 'Define manufacturing batch / lot numbering format, plant codes, and sequence resets.';
             default:
                 return 'Each option has a unique ID (code) used in product dropdowns.';
         }
@@ -83,6 +104,14 @@ export class MasterDataManagerView {
     }
 
     private render() {
+        if (this.isSerialLogic()) {
+            this.renderSerialLogicPage();
+            return;
+        }
+        if (this.isBatchLogic()) {
+            this.renderBatchLogicPage();
+            return;
+        }
         if (this.view === 'create') { this.renderFormPage(null); return; }
         if (this.view === 'edit' && this.editingCode) {
             const option = getMasterData(this.activeType).find(o => o.code === this.editingCode);
@@ -99,7 +128,6 @@ export class MasterDataManagerView {
         const hasSerialBatch = this.supportsSerialAndBatchCode();
         const hasPlantCode = this.isPlant() || this.isVendor();
 
-        // Calculate columns for empty row colspan
         let colCount = 3; // ID, Label, Actions
         if (hasPlantCode) colCount += 1;
         if (this.isFinancialYear()) colCount += 1;
@@ -119,99 +147,96 @@ export class MasterDataManagerView {
             <div class="manager-card-panel">
                 <div class="panel-header-row">
                     <div>
-                        <h3 class="panel-heading">${def.icon} ${def.label}</h3>
+                        <h2 class="panel-heading">${def.icon} ${def.label}</h2>
                         <p class="panel-subheading">${this.getSubheading()}</p>
                     </div>
-                    <div class="panel-actions-group">
-                        <button class="btn btn-primary" id="btn-add-master">➕ Add ${def.label}</button>
-                    </div>
+                    <button class="btn btn-primary" id="btn-add-master-entry">
+                        ➕ Add ${def.label.replace(/s$/, '')}
+                    </button>
                 </div>
 
-                <div class="table-filter-bar" style="padding: 12px 18px;">
-                    <label class="config-label">${records.length} record(s)</label>
-                </div>
-
-                <div class="table-responsive-container">
-                    <table class="manager-data-table">
+                <div class="manager-table-wrapper" style="margin-top:16px;">
+                    <table class="data-table">
                         <thead>
                             <tr>
-                                <th>ID (Code)</th>
-                                <th>Label</th>
+                                <th>ID / Code</th>
+                                <th>Label / Name</th>
                                 ${hasPlantCode ? '<th>Plant Code</th>' : ''}
                                 ${this.isFinancialYear() ? '<th>FY Structure</th>' : ''}
-                                ${hasSerialBatch ? '<th>Code for Serial No.</th><th>Code for Batch No.</th>' : ''}
+                                ${hasSerialBatch ? '<th>Code for Serial No</th><th>Code for Batch No</th>' : ''}
                                 ${this.isVariable() ? '<th>Default Value</th>' : ''}
                                 <th style="text-align:right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${records.length === 0 ? `
-                                <tr><td colspan="${colCount}" style="text-align:center;padding:32px;color:var(--text-secondary);">No records yet. Click "Add" to create one.</td></tr>
-                            ` : records.map(r => this.renderRow(r)).join('')}
+                                <tr>
+                                    <td colspan="${colCount}" style="text-align:center;padding:32px;color:var(--text-secondary);">
+                                        No ${def.label.toLowerCase()} defined yet. Click "Add" above to create one.
+                                    </td>
+                                </tr>
+                            ` : records.map(r => `
+                                <tr>
+                                    <td><span class="code-badge-pill" style="font-weight:700;font-family:monospace;">${r.code}</span></td>
+                                    <td style="font-weight:600;">${r.label}</td>
+                                    ${hasPlantCode ? `<td><span class="nav-item-badge badge-neutral" style="font-family:monospace;font-weight:700;">${r.plantCode || '—'}</span></td>` : ''}
+                                    ${this.isFinancialYear() ? `<td><span class="nav-item-badge badge-indigo" style="font-size:0.75rem;">${r.fyStructure || 'April to March'}</span></td>` : ''}
+                                    ${hasSerialBatch ? `
+                                        <td>
+                                            ${r.serialCode ? `<span class="nav-item-badge badge-emerald" style="font-family:monospace;font-weight:700;">${r.serialCode}</span>` : '<span style="color:var(--text-secondary);font-size:0.75rem;">—</span>'}
+                                        </td>
+                                        <td>
+                                            ${r.batchCode ? `<span class="nav-item-badge badge-cyan" style="font-family:monospace;font-weight:700;">${r.batchCode}</span>` : '<span style="color:var(--text-secondary);font-size:0.75rem;">—</span>'}
+                                        </td>
+                                    ` : ''}
+                                    ${this.isVariable() ? `<td style="font-family:monospace;color:var(--text-secondary);">${r.defaultValue || '—'}</td>` : ''}
+                                    <td style="text-align:right;">
+                                        <div style="display:flex;gap:6px;justify-content:flex-end;">
+                                            <button class="btn btn-sm btn-outline" data-action="edit" data-code="${r.code}" title="Edit">✏️</button>
+                                            <button class="btn btn-sm btn-outline" data-action="delete" data-code="${r.code}" title="Delete" style="color:#ef4444;border-color:#fee2e2;">🗑️</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>`;
 
-        this.bindTypeNav();
-        this.bindListActions();
+        this.bindListEvents();
     }
 
-    private renderRow(r: MasterDataOption): string {
-        const code = r.code.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-        const label = r.label.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-        const hasSerialBatch = this.supportsSerialAndBatchCode();
-        const hasPlantCode = this.isPlant() || this.isVendor();
-
-        return `
-        <tr class="table-row-item" data-code="${code}">
-            <td><span class="sku-badge">${code}</span></td>
-            <td class="item-title-bold">${label}</td>
-            ${hasPlantCode ? `<td><span class="serial-code-text">${r.plantCode ?? '—'}</span></td>` : ''}
-            ${this.isFinancialYear() ? `<td><span class="sku-badge" style="background:var(--accent-subtle);color:var(--accent-primary);font-weight:600;">${r.fyStructure || 'April to March'}</span></td>` : ''}
-            ${hasSerialBatch ? `
-                <td><span class="serial-code-text">${r.serialCode || '—'}</span></td>
-                <td><span class="serial-code-text">${r.batchCode || '—'}</span></td>
-            ` : ''}
-            ${this.isVariable() ? `<td>${r.defaultValue ?? '—'}</td>` : ''}
-            <td style="text-align:right;">
-                <div class="row-actions-group" style="justify-content:flex-end;">
-                    <button class="btn btn-outline btn-xs btn-edit-master" data-code="${code}" title="Edit">✏️ Edit</button>
-                    <button class="btn btn-danger-soft btn-xs btn-del-master" data-code="${code}" title="Delete">🗑️</button>
-                </div>
-            </td>
-        </tr>`;
-    }
-
-    private bindTypeNav() {
-        this.container.querySelectorAll<HTMLButtonElement>('.master-type-tab').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.activeType = btn.dataset.type as MasterDataType;
-                this.view = 'list';
-                this.render();
+    private bindListEvents() {
+        this.container.querySelectorAll<HTMLButtonElement>('.master-type-tab').forEach(b => {
+            b.addEventListener('click', () => {
+                const t = b.dataset.type as MasterDataType;
+                if (t && t !== this.activeType) {
+                    this.activeType = t;
+                    this.view = 'list';
+                    this.render();
+                }
             });
         });
-    }
 
-    private bindListActions() {
-        this.container.querySelector('#btn-add-master')?.addEventListener('click', () => {
-            this.editingCode = null;
+        this.container.querySelector('#btn-add-master-entry')?.addEventListener('click', () => {
             this.view = 'create';
             this.render();
         });
-        this.container.querySelectorAll<HTMLButtonElement>('.btn-edit-master').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.editingCode = btn.dataset.code!;
+
+        this.container.querySelectorAll<HTMLButtonElement>('[data-action="edit"]').forEach(b => {
+            b.addEventListener('click', () => {
+                this.editingCode = b.dataset.code || null;
                 this.view = 'edit';
                 this.render();
             });
         });
-        this.container.querySelectorAll<HTMLButtonElement>('.btn-del-master').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const code = btn.dataset.code!;
-                const option = getMasterData(this.activeType).find(o => o.code === code);
-                if (option && confirm(`Delete "${option.label}"?`)) {
+
+        this.container.querySelectorAll<HTMLButtonElement>('[data-action="delete"]').forEach(b => {
+            b.addEventListener('click', () => {
+                const code = b.dataset.code;
+                if (!code) return;
+                if (confirm(`Delete "${code}" from ${this.typeDef().label}?`)) {
                     deleteMasterData(this.activeType, code);
                     void supabaseService.deleteMasterData(this.activeType, code);
                     this.render();
@@ -220,81 +245,725 @@ export class MasterDataManagerView {
         });
     }
 
-    // ── CREATE / EDIT PAGE ─────────────────────────────────────────────────────
-    private renderFormPage(option: MasterDataOption | null) {
-        const def = this.typeDef();
-        const isEdit = option !== null;
+    // ── 🔢 SERIAL NUMBER LOGIC BUILDER ──────────────────────────────────────────
+    private renderSerialLogicPage() {
+        const rule = getSerialLogicRule(this.selectedPlantForRule);
         const plants = getMasterData('plant');
-        const hasSerialBatch = this.supportsSerialAndBatchCode();
+        const preview = generateSerialNumberPreview(rule, { plant: this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL' });
 
         this.container.innerHTML = `
         <div class="entity-manager-root">
-            <div class="template-page-header">
-                <button class="btn btn-outline btn-sm" data-action="back-to-list">← Back to ${def.label}</button>
-                <div>
-                    <h3 class="library-main-title">${isEdit ? '✏️ Edit' : '➕ Add'} ${def.label}</h3>
-                    <p style="font-size: 0.75rem; color: var(--ink-muted); margin: 2px 0 0 0;">${this.getSubheading()}</p>
-                </div>
+            <div class="master-type-nav">
+                ${MASTER_DATA_TYPES.map(t => `
+                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${t.type}">
+                        <span>${t.icon}</span> <span>${t.label}</span>
+                    </button>
+                `).join('')}
             </div>
 
-            <div class="template-create-page-shell">
-                <form id="form-master" class="modal-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                    <div class="form-group">
-                        <label style="font-weight:600;">${this.isVariable() ? 'Variable Key *' : 'ID / Code *'}</label>
-                        <input type="text" id="m-code" class="form-control-input" required value="${option?.code || ''}" placeholder="${this.isVendor() ? 'e.g. VEN-001' : this.isFinancialYear() ? 'e.g. 2025-26' : this.isMonth() ? 'e.g. 01' : this.isPlant() ? 'e.g. KSPL' : this.isVariable() ? 'e.g. batchNo' : 'e.g. W / faucet'}" ${isEdit ? 'readonly style="background:var(--surface-muted);"' : ''} />
+            <div class="manager-card-panel" style="max-width: 960px; margin: 0 auto; width: 100%;">
+                <div class="panel-header-row" style="align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+                    <div>
+                        <h2 class="panel-heading">🔢 Serial Number Logic &amp; Rule Builder</h2>
+                        <p class="panel-subheading">Configure how serial numbers are constructed, which master codes to include, digit length/padding, starting sequence, and per-plant rules.</p>
                     </div>
-                    <div class="form-group">
-                        <label style="font-weight:600;">Label *</label>
-                        <input type="text" id="m-label" class="form-control-input" required value="${option?.label || ''}" placeholder="${this.isVendor() ? 'e.g. Apex Bath Fittings Pvt Ltd' : this.isFinancialYear() ? 'e.g. FY 2025-2026' : this.isMonth() ? 'e.g. January' : this.isPlant() ? 'e.g. KSPL — Unit 1' : 'e.g. Rose Gold'}" />
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-outline" id="btn-reset-serial-logic">🔄 Reset Defaults</button>
+                        <button class="btn btn-primary" id="btn-save-serial-logic">💾 Save Serial Logic</button>
                     </div>
+                </div>
 
-                    ${this.isVariable() ? `
-                        <div class="form-group col-span-2" style="grid-column:1 / -1;">
-                            <label style="font-weight:600;">Default Value</label>
-                            <input type="text" id="m-default" class="form-control-input" value="${option?.defaultValue || ''}" placeholder="e.g. BATCH-01" />
+                <!-- PLANT SELECTOR TABS -->
+                <div style="display: flex; gap: 8px; margin-top: 16px; border-bottom: 1px solid var(--line); padding-bottom: 12px; flex-wrap: wrap;">
+                    <span style="font-size: 0.8125rem; font-weight: 700; color: var(--text-secondary); align-self: center; margin-right: 6px;">Target Plant:</span>
+                    <button class="btn btn-sm ${this.selectedPlantForRule === 'ALL' ? 'btn-primary' : 'btn-outline'} btn-serial-plant-tab" data-plant="ALL">
+                        🌐 All Plants (Global Default)
+                    </button>
+                    ${plants.map(p => `
+                        <button class="btn btn-sm ${this.selectedPlantForRule === p.code ? 'btn-primary' : 'btn-outline'} btn-serial-plant-tab" data-plant="${p.code}">
+                            🏭 ${p.label} (${p.serialCode || p.code})
+                        </button>
+                    `).join('')}
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 20px; margin-top: 20px;">
+                    <!-- LIVE PREVIEW CARD -->
+                    <div style="background: var(--surface-muted); border: 2px solid var(--accent); border-radius: 12px; padding: 20px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--accent); letter-spacing: 0.05em;">
+                                Live Generated Serial Preview
+                            </span>
+                            <span class="nav-item-badge badge-indigo" id="preview-serial-length" style="font-family: monospace; font-weight: 700;">
+                                ${preview.length} Characters
+                            </span>
                         </div>
-                    ` : ''}
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span id="preview-serial-code" style="font-size: 1.75rem; font-weight: 800; font-family: monospace; color: var(--text-primary); letter-spacing: 0.02em;">
+                                ${preview.code}
+                            </span>
+                        </div>
+                        <div id="preview-serial-breakdown" style="display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap;">
+                            ${this.renderSerialBreakdownPills(rule, preview.segments)}
+                        </div>
+                    </div>
 
-                    ${this.isFinancialYear() ? `
-                        <div class="form-group col-span-2" style="grid-column:1 / -1;">
-                            <label style="font-weight:600;">Financial Year Structure *</label>
-                            <select id="m-fystructure" class="form-control-input" required>
-                                <option value="April to March" ${(!option?.fyStructure || option?.fyStructure === 'April to March') ? 'selected' : ''}>📅 April to March (Apr – Mar)</option>
-                                <option value="January to December" ${option?.fyStructure === 'January to December' ? 'selected' : ''}>📅 January to December (Jan – Dec)</option>
-                                <option value="July to June" ${option?.fyStructure === 'July to June' ? 'selected' : ''}>📅 July to June (Jul – Jun)</option>
-                                <option value="October to September" ${option?.fyStructure === 'October to September' ? 'selected' : ''}>📅 October to September (Oct – Sep)</option>
+                    <!-- RULE DETAILS & DELIMITER -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                        <div class="form-group">
+                            <label style="font-weight: 700; font-size: 0.8125rem;">Rule Description / Name</label>
+                            <input type="text" id="sl-rule-name" value="${rule.ruleName}" style="width: 100%; font-weight: 600;" />
+                        </div>
+                        <div class="form-group">
+                            <label style="font-weight: 700; font-size: 0.8125rem;">Segment Delimiter (Separator)</label>
+                            <select id="sl-delimiter" class="filter-dropdown" style="width: 100%;">
+                                <option value="-" ${rule.delimiter === '-' ? 'selected' : ''}>Hyphen (-)</option>
+                                <option value="/" ${rule.delimiter === '/' ? 'selected' : ''}>Slash (/)</option>
+                                <option value="_" ${rule.delimiter === '_' ? 'selected' : ''}>Underscore (_)</option>
+                                <option value="." ${rule.delimiter === '.' ? 'selected' : ''}>Dot (.)</option>
+                                <option value="" ${rule.delimiter === '' ? 'selected' : ''}>None (No Separator)</option>
                             </select>
-                            <small style="color:var(--text-secondary);font-size:0.72rem;">Fiscal cycle period structure for accounting and batch tracking.</small>
+                        </div>
+                    </div>
+
+                    <!-- CODE INCLUSIONS & SEGMENTS -->
+                    <div class="settings-section-card" style="padding: 16px;">
+                        <h3 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 12px 0; color: var(--text-primary);">
+                            🧩 Code Segment Inclusions (Check which codes to include in the Serial Number)
+                        </h3>
+                        <p style="font-size: 0.8125rem; color: var(--text-secondary); margin: 0 0 16px 0;">
+                            Codes are dynamically pulled from their respective Master Tables (Plants, FY, Months, Categories, Groups).
+                        </p>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-sl-plant" ${rule.inclusions.includePlant ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Plant Serial Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Plant Master (e.g. KSPL ➔ K)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-sl-fy" ${rule.inclusions.includeFinancialYear ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Financial Year Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From FY Master (e.g. 2026-27 ➔ 26)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-sl-month" ${rule.inclusions.includeMonth ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Calendar Month Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Month Master (e.g. August ➔ 08)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-sl-category" ${rule.inclusions.includeCategory ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Product Category Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Category Master (e.g. Faucets ➔ FC)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-sl-group" ${rule.inclusions.includeGroup ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Product Group Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Group Master (e.g. Mixers ➔ MX)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-sl-sku" ${rule.inclusions.includeSku ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Product SKU Segment</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">Short alphanumeric code from SKU</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-sl-color" ${rule.inclusions.includeColor ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Color / Finish Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Color Master (e.g. Chrome ➔ CP)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-sl-vendor" ${rule.inclusions.includeVendor ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Vendor Serial Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Vendor Master (e.g. V1 / V2)</div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- CUSTOM STATIC PREFIX / SUFFIX -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px;">
+                            <div class="form-group">
+                                <label style="font-weight: 600; font-size: 0.8125rem;">Optional Static Prefix</label>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <input type="checkbox" id="inc-sl-prefix" ${rule.inclusions.includeCustomPrefix ? 'checked' : ''} />
+                                    <input type="text" id="sl-custom-prefix" placeholder="e.g. SN" value="${rule.customPrefix || ''}" style="width: 100%; font-family: monospace;" />
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label style="font-weight: 600; font-size: 0.8125rem;">Optional Static Suffix</label>
+                                <input type="text" id="sl-custom-suffix" placeholder="e.g. X" value="${rule.customSuffix || ''}" style="width: 100%; font-family: monospace;" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SEQUENCE & LENGTH CONFIGURATION -->
+                    <div class="settings-section-card" style="padding: 16px;">
+                        <h3 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 12px 0; color: var(--text-primary);">
+                            🔢 Sequence Number, Padding &amp; Reset Policy
+                        </h3>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+                            <div class="form-group">
+                                <label style="font-weight: 700; font-size: 0.8125rem;">Sequence Digits (Padding Length)</label>
+                                <select id="sl-padding" class="filter-dropdown" style="width: 100%;">
+                                    <option value="3" ${rule.sequencePadding === 3 ? 'selected' : ''}>3 Digits (e.g. 001)</option>
+                                    <option value="4" ${rule.sequencePadding === 4 ? 'selected' : ''}>4 Digits (e.g. 0001)</option>
+                                    <option value="5" ${rule.sequencePadding === 5 ? 'selected' : ''}>5 Digits (e.g. 00001)</option>
+                                    <option value="6" ${rule.sequencePadding === 6 ? 'selected' : ''}>6 Digits (e.g. 000001)</option>
+                                    <option value="8" ${rule.sequencePadding === 8 ? 'selected' : ''}>8 Digits (e.g. 00000001)</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-weight: 700; font-size: 0.8125rem;">Sequence Start Number</label>
+                                <input type="number" id="sl-seq-start" min="1" value="${rule.sequenceStartNumber || 1}" style="width: 100%; font-weight: 700;" />
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-weight: 700; font-size: 0.8125rem;">Current Next Sequence</label>
+                                <input type="number" id="sl-seq-current" min="1" value="${rule.currentSequence || 1}" style="width: 100%; font-weight: 700; color: var(--accent);" />
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-weight: 700; font-size: 0.8125rem;">Auto-Reset Sequence Policy</label>
+                                <select id="sl-reset-freq" class="filter-dropdown" style="width: 100%;">
+                                    <option value="yearly" ${rule.resetFrequency === 'yearly' ? 'selected' : ''}>Reset Yearly on Fiscal Year (Apr 1)</option>
+                                    <option value="monthly" ${rule.resetFrequency === 'monthly' ? 'selected' : ''}>Reset Monthly</option>
+                                    <option value="daily" ${rule.resetFrequency === 'daily' ? 'selected' : ''}>Reset Daily</option>
+                                    <option value="never" ${rule.resetFrequency === 'never' ? 'selected' : ''}>Continuous (Never Reset)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+
+        this.bindSerialLogicEvents(rule);
+    }
+
+    private renderSerialBreakdownPills(rule: SerialNumberLogicRule, segs: Record<string, string>): string {
+        const pills: string[] = [];
+        if (rule.inclusions.includeCustomPrefix && segs.custom_prefix) {
+            pills.push(`<span class="nav-item-badge badge-neutral">Prefix: <strong>${segs.custom_prefix}</strong></span>`);
+        }
+        if (rule.inclusions.includePlant && segs.plant) {
+            pills.push(`<span class="nav-item-badge badge-neutral">Plant: <strong>${segs.plant}</strong></span>`);
+        }
+        if (rule.inclusions.includeVendor && segs.vendor) {
+            pills.push(`<span class="nav-item-badge badge-neutral">Vendor: <strong>${segs.vendor}</strong></span>`);
+        }
+        if (rule.inclusions.includeFinancialYear && segs.financial_year) {
+            pills.push(`<span class="nav-item-badge badge-indigo">FY: <strong>${segs.financial_year}</strong></span>`);
+        }
+        if (rule.inclusions.includeMonth && segs.month) {
+            pills.push(`<span class="nav-item-badge badge-cyan">Month: <strong>${segs.month}</strong></span>`);
+        }
+        if (rule.inclusions.includeCategory && segs.category) {
+            pills.push(`<span class="nav-item-badge badge-emerald">Cat: <strong>${segs.category}</strong></span>`);
+        }
+        if (rule.inclusions.includeGroup && segs.group) {
+            pills.push(`<span class="nav-item-badge badge-emerald">Group: <strong>${segs.group}</strong></span>`);
+        }
+        if (rule.inclusions.includeSku && segs.sku) {
+            pills.push(`<span class="nav-item-badge badge-neutral">SKU: <strong>${segs.sku}</strong></span>`);
+        }
+        if (rule.inclusions.includeColor && segs.color) {
+            pills.push(`<span class="nav-item-badge badge-amber">Color: <strong>${segs.color}</strong></span>`);
+        }
+        pills.push(`<span class="nav-item-badge badge-emerald" style="border: 1px solid #10b981;">Sequence: <strong>${segs.sequence}</strong></span>`);
+        return pills.join('');
+    }
+
+    private bindSerialLogicEvents(rule: SerialNumberLogicRule) {
+        // Switch Plant
+        this.container.querySelectorAll<HTMLButtonElement>('.btn-serial-plant-tab').forEach(b => {
+            b.addEventListener('click', () => {
+                this.selectedPlantForRule = b.dataset.plant || 'ALL';
+                this.render();
+            });
+        });
+
+        // Live preview updater on input change
+        const updateLivePreview = () => {
+            const currentRule: SerialNumberLogicRule = {
+                ...rule,
+                ruleName: (this.container.querySelector('#sl-rule-name') as HTMLInputElement).value.trim(),
+                delimiter: (this.container.querySelector('#sl-delimiter') as HTMLSelectElement).value,
+                customPrefix: (this.container.querySelector('#sl-custom-prefix') as HTMLInputElement).value.trim(),
+                customSuffix: (this.container.querySelector('#sl-custom-suffix') as HTMLInputElement).value.trim(),
+                sequencePadding: parseInt((this.container.querySelector('#sl-padding') as HTMLSelectElement).value, 10) || 4,
+                sequenceStartNumber: parseInt((this.container.querySelector('#sl-seq-start') as HTMLInputElement).value, 10) || 1,
+                currentSequence: parseInt((this.container.querySelector('#sl-seq-current') as HTMLInputElement).value, 10) || 1,
+                resetFrequency: (this.container.querySelector('#sl-reset-freq') as HTMLSelectElement).value as any,
+                inclusions: {
+                    includePlant: (this.container.querySelector('#inc-sl-plant') as HTMLInputElement).checked,
+                    includeFinancialYear: (this.container.querySelector('#inc-sl-fy') as HTMLInputElement).checked,
+                    includeMonth: (this.container.querySelector('#inc-sl-month') as HTMLInputElement).checked,
+                    includeCategory: (this.container.querySelector('#inc-sl-category') as HTMLInputElement).checked,
+                    includeGroup: (this.container.querySelector('#inc-sl-group') as HTMLInputElement).checked,
+                    includeSku: (this.container.querySelector('#inc-sl-sku') as HTMLInputElement).checked,
+                    includeColor: (this.container.querySelector('#inc-sl-color') as HTMLInputElement).checked,
+                    includeVendor: (this.container.querySelector('#inc-sl-vendor') as HTMLInputElement).checked,
+                    includeCustomPrefix: (this.container.querySelector('#inc-sl-prefix') as HTMLInputElement).checked
+                }
+            };
+
+            const preview = generateSerialNumberPreview(currentRule, { plant: this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL' });
+            const codeEl = this.container.querySelector('#preview-serial-code');
+            const lenEl = this.container.querySelector('#preview-serial-length');
+            const pillsEl = this.container.querySelector('#preview-serial-breakdown');
+
+            if (codeEl) codeEl.textContent = preview.code;
+            if (lenEl) lenEl.textContent = `${preview.length} Characters`;
+            if (pillsEl) pillsEl.innerHTML = this.renderSerialBreakdownPills(currentRule, preview.segments);
+        };
+
+        this.container.querySelectorAll('input, select').forEach(el => {
+            el.addEventListener('input', updateLivePreview);
+            el.addEventListener('change', updateLivePreview);
+        });
+
+        // Save
+        this.container.querySelector('#btn-save-serial-logic')?.addEventListener('click', () => {
+            const updatedRule: SerialNumberLogicRule = {
+                ...rule,
+                plant: this.selectedPlantForRule,
+                ruleName: (this.container.querySelector('#sl-rule-name') as HTMLInputElement).value.trim(),
+                delimiter: (this.container.querySelector('#sl-delimiter') as HTMLSelectElement).value,
+                customPrefix: (this.container.querySelector('#sl-custom-prefix') as HTMLInputElement).value.trim(),
+                customSuffix: (this.container.querySelector('#sl-custom-suffix') as HTMLInputElement).value.trim(),
+                sequencePadding: parseInt((this.container.querySelector('#sl-padding') as HTMLSelectElement).value, 10) || 4,
+                sequenceStartNumber: parseInt((this.container.querySelector('#sl-seq-start') as HTMLInputElement).value, 10) || 1,
+                currentSequence: parseInt((this.container.querySelector('#sl-seq-current') as HTMLInputElement).value, 10) || 1,
+                resetFrequency: (this.container.querySelector('#sl-reset-freq') as HTMLSelectElement).value as any,
+                inclusions: {
+                    includePlant: (this.container.querySelector('#inc-sl-plant') as HTMLInputElement).checked,
+                    includeFinancialYear: (this.container.querySelector('#inc-sl-fy') as HTMLInputElement).checked,
+                    includeMonth: (this.container.querySelector('#inc-sl-month') as HTMLInputElement).checked,
+                    includeCategory: (this.container.querySelector('#inc-sl-category') as HTMLInputElement).checked,
+                    includeGroup: (this.container.querySelector('#inc-sl-group') as HTMLInputElement).checked,
+                    includeSku: (this.container.querySelector('#inc-sl-sku') as HTMLInputElement).checked,
+                    includeColor: (this.container.querySelector('#inc-sl-color') as HTMLInputElement).checked,
+                    includeVendor: (this.container.querySelector('#inc-sl-vendor') as HTMLInputElement).checked,
+                    includeCustomPrefix: (this.container.querySelector('#inc-sl-prefix') as HTMLInputElement).checked
+                }
+            };
+
+            saveSerialLogicRule(updatedRule);
+            alert(`✅ Serial Number Logic for ${this.selectedPlantForRule} saved successfully!`);
+        });
+
+        // Reset
+        this.container.querySelector('#btn-reset-serial-logic')?.addEventListener('click', () => {
+            if (confirm('Reset to standard serial logic format?')) {
+                const def = DEFAULT_SERIAL_RULES.find(r => r.plant === this.selectedPlantForRule) || DEFAULT_SERIAL_RULES[0];
+                saveSerialLogicRule({ ...def, plant: this.selectedPlantForRule, id: `rule-serial-${this.selectedPlantForRule.toLowerCase()}` });
+                this.render();
+            }
+        });
+
+        // Master Tab Navigation
+        this.container.querySelectorAll<HTMLButtonElement>('.master-type-tab').forEach(b => {
+            b.addEventListener('click', () => {
+                const t = b.dataset.type as MasterDataType;
+                if (t && t !== this.activeType) {
+                    this.activeType = t;
+                    this.view = 'list';
+                    this.render();
+                }
+            });
+        });
+    }
+
+    // ── 📦 BATCH NUMBER LOGIC BUILDER ───────────────────────────────────────────
+    private renderBatchLogicPage() {
+        const rule = getBatchLogicRule(this.selectedPlantForRule);
+        const plants = getMasterData('plant');
+        const preview = generateBatchNumberPreview(rule, { plant: this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL' });
+
+        this.container.innerHTML = `
+        <div class="entity-manager-root">
+            <div class="master-type-nav">
+                ${MASTER_DATA_TYPES.map(t => `
+                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${t.type}">
+                        <span>${t.icon}</span> <span>${t.label}</span>
+                    </button>
+                `).join('')}
+            </div>
+
+            <div class="manager-card-panel" style="max-width: 960px; margin: 0 auto; width: 100%;">
+                <div class="panel-header-row" style="align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+                    <div>
+                        <h2 class="panel-heading">📦 Batch Number Logic &amp; Rule Builder</h2>
+                        <p class="panel-subheading">Configure manufacturing batch / lot numbering format, plant batch codes, lot sequence length, and auto-reset policies.</p>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-outline" id="btn-reset-batch-logic">🔄 Reset Defaults</button>
+                        <button class="btn btn-primary" id="btn-save-batch-logic">💾 Save Batch Logic</button>
+                    </div>
+                </div>
+
+                <!-- PLANT SELECTOR TABS -->
+                <div style="display: flex; gap: 8px; margin-top: 16px; border-bottom: 1px solid var(--line); padding-bottom: 12px; flex-wrap: wrap;">
+                    <span style="font-size: 0.8125rem; font-weight: 700; color: var(--text-secondary); align-self: center; margin-right: 6px;">Target Plant:</span>
+                    <button class="btn btn-sm ${this.selectedPlantForRule === 'ALL' ? 'btn-primary' : 'btn-outline'} btn-batch-plant-tab" data-plant="ALL">
+                        🌐 All Plants (Global Default)
+                    </button>
+                    ${plants.map(p => `
+                        <button class="btn btn-sm ${this.selectedPlantForRule === p.code ? 'btn-primary' : 'btn-outline'} btn-batch-plant-tab" data-plant="${p.code}">
+                            🏭 ${p.label} (${p.batchCode || p.code})
+                        </button>
+                    `).join('')}
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 20px; margin-top: 20px;">
+                    <!-- LIVE PREVIEW CARD -->
+                    <div style="background: var(--surface-muted); border: 2px solid var(--accent); border-radius: 12px; padding: 20px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--accent); letter-spacing: 0.05em;">
+                                Live Generated Batch Code Preview
+                            </span>
+                            <span class="nav-item-badge badge-indigo" id="preview-batch-length" style="font-family: monospace; font-weight: 700;">
+                                ${preview.length} Characters
+                            </span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span id="preview-batch-code" style="font-size: 1.75rem; font-weight: 800; font-family: monospace; color: var(--text-primary); letter-spacing: 0.02em;">
+                                ${preview.code}
+                            </span>
+                        </div>
+                        <div id="preview-batch-breakdown" style="display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap;">
+                            ${this.renderBatchBreakdownPills(rule, preview.segments)}
+                        </div>
+                    </div>
+
+                    <!-- RULE DETAILS & DELIMITER -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                        <div class="form-group">
+                            <label style="font-weight: 700; font-size: 0.8125rem;">Rule Name</label>
+                            <input type="text" id="bl-rule-name" value="${rule.ruleName}" style="width: 100%; font-weight: 600;" />
+                        </div>
+                        <div class="form-group">
+                            <label style="font-weight: 700; font-size: 0.8125rem;">Segment Delimiter</label>
+                            <select id="bl-delimiter" class="filter-dropdown" style="width: 100%;">
+                                <option value="-" ${rule.delimiter === '-' ? 'selected' : ''}>Hyphen (-)</option>
+                                <option value="/" ${rule.delimiter === '/' ? 'selected' : ''}>Slash (/)</option>
+                                <option value="_" ${rule.delimiter === '_' ? 'selected' : ''}>Underscore (_)</option>
+                                <option value="" ${rule.delimiter === '' ? 'selected' : ''}>None (No Separator)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- CODE INCLUSIONS -->
+                    <div class="settings-section-card" style="padding: 16px;">
+                        <h3 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 12px 0; color: var(--text-primary);">
+                            🧩 Code Segment Inclusions (Check which codes to include in Batch Number)
+                        </h3>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-bl-prefix" ${rule.inclusions.includeCustomPrefix ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Prefix Tag (BAT / LOT)</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">e.g. BAT or LOT</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-bl-plant" ${rule.inclusions.includePlant ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Plant Batch Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Plant Master (e.g. KS / KG / KB)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-bl-fy" ${rule.inclusions.includeFinancialYear ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Financial Year Batch Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From FY Master (e.g. F26)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-bl-month" ${rule.inclusions.includeMonth ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Month Batch Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Month Master (e.g. M08)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-bl-category" ${rule.inclusions.includeCategory ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Category Batch Code</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Category Master (e.g. BFC)</div>
+                                </div>
+                            </label>
+
+                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
+                                <input type="checkbox" id="inc-bl-shift" ${rule.inclusions.includeShift ? 'checked' : ''} style="margin-top: 3px;" />
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.8125rem;">Shift Identifier</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">e.g. A / B / C</div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 14px; max-width: 320px;">
+                            <label style="font-weight: 600; font-size: 0.8125rem;">Batch Prefix Text</label>
+                            <input type="text" id="bl-custom-prefix" value="${rule.customPrefix || 'BAT'}" style="width: 100%; font-family: monospace;" />
+                        </div>
+                    </div>
+
+                    <!-- SEQUENCE CONFIG -->
+                    <div class="settings-section-card" style="padding: 16px;">
+                        <h3 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 12px 0; color: var(--text-primary);">
+                            🔢 Batch Sequence &amp; Padding
+                        </h3>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+                            <div class="form-group">
+                                <label style="font-weight: 700; font-size: 0.8125rem;">Sequence Digits (Padding)</label>
+                                <select id="bl-padding" class="filter-dropdown" style="width: 100%;">
+                                    <option value="2" ${rule.sequencePadding === 2 ? 'selected' : ''}>2 Digits (e.g. 01)</option>
+                                    <option value="3" ${rule.sequencePadding === 3 ? 'selected' : ''}>3 Digits (e.g. 001)</option>
+                                    <option value="4" ${rule.sequencePadding === 4 ? 'selected' : ''}>4 Digits (e.g. 0001)</option>
+                                    <option value="5" ${rule.sequencePadding === 5 ? 'selected' : ''}>5 Digits (e.g. 00001)</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-weight: 700; font-size: 0.8125rem;">Sequence Start Number</label>
+                                <input type="number" id="bl-seq-start" min="1" value="${rule.sequenceStartNumber || 1}" style="width: 100%; font-weight: 700;" />
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-weight: 700; font-size: 0.8125rem;">Sequence Reset Frequency</label>
+                                <select id="bl-reset-freq" class="filter-dropdown" style="width: 100%;">
+                                    <option value="monthly" ${rule.resetFrequency === 'monthly' ? 'selected' : ''}>Reset Monthly</option>
+                                    <option value="yearly" ${rule.resetFrequency === 'yearly' ? 'selected' : ''}>Reset Yearly</option>
+                                    <option value="daily" ${rule.resetFrequency === 'daily' ? 'selected' : ''}>Reset Daily</option>
+                                    <option value="never" ${rule.resetFrequency === 'never' ? 'selected' : ''}>Continuous (Never Reset)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+
+        this.bindBatchLogicEvents(rule);
+    }
+
+    private renderBatchBreakdownPills(rule: BatchNumberLogicRule, segs: Record<string, string>): string {
+        const pills: string[] = [];
+        if (rule.inclusions.includeCustomPrefix && segs.custom_prefix) {
+            pills.push(`<span class="nav-item-badge badge-neutral">Prefix: <strong>${segs.custom_prefix}</strong></span>`);
+        }
+        if (rule.inclusions.includePlant && segs.plant) {
+            pills.push(`<span class="nav-item-badge badge-neutral">Plant: <strong>${segs.plant}</strong></span>`);
+        }
+        if (rule.inclusions.includeFinancialYear && segs.financial_year) {
+            pills.push(`<span class="nav-item-badge badge-indigo">FY: <strong>${segs.financial_year}</strong></span>`);
+        }
+        if (rule.inclusions.includeMonth && segs.month) {
+            pills.push(`<span class="nav-item-badge badge-cyan">Month: <strong>${segs.month}</strong></span>`);
+        }
+        if (rule.inclusions.includeCategory && segs.category) {
+            pills.push(`<span class="nav-item-badge badge-emerald">Cat: <strong>${segs.category}</strong></span>`);
+        }
+        if (rule.inclusions.includeShift && segs.shift) {
+            pills.push(`<span class="nav-item-badge badge-amber">Shift: <strong>${segs.shift}</strong></span>`);
+        }
+        pills.push(`<span class="nav-item-badge badge-emerald" style="border: 1px solid #10b981;">Seq: <strong>${segs.sequence}</strong></span>`);
+        return pills.join('');
+    }
+
+    private bindBatchLogicEvents(rule: BatchNumberLogicRule) {
+        this.container.querySelectorAll<HTMLButtonElement>('.btn-batch-plant-tab').forEach(b => {
+            b.addEventListener('click', () => {
+                this.selectedPlantForRule = b.dataset.plant || 'ALL';
+                this.render();
+            });
+        });
+
+        const updateLivePreview = () => {
+            const currentRule: BatchNumberLogicRule = {
+                ...rule,
+                ruleName: (this.container.querySelector('#bl-rule-name') as HTMLInputElement).value.trim(),
+                delimiter: (this.container.querySelector('#bl-delimiter') as HTMLSelectElement).value,
+                customPrefix: (this.container.querySelector('#bl-custom-prefix') as HTMLInputElement).value.trim(),
+                sequencePadding: parseInt((this.container.querySelector('#bl-padding') as HTMLSelectElement).value, 10) || 3,
+                sequenceStartNumber: parseInt((this.container.querySelector('#bl-seq-start') as HTMLInputElement).value, 10) || 1,
+                resetFrequency: (this.container.querySelector('#bl-reset-freq') as HTMLSelectElement).value as any,
+                inclusions: {
+                    includeCustomPrefix: (this.container.querySelector('#inc-bl-prefix') as HTMLInputElement).checked,
+                    includePlant: (this.container.querySelector('#inc-bl-plant') as HTMLInputElement).checked,
+                    includeFinancialYear: (this.container.querySelector('#inc-bl-fy') as HTMLInputElement).checked,
+                    includeMonth: (this.container.querySelector('#inc-bl-month') as HTMLInputElement).checked,
+                    includeCategory: (this.container.querySelector('#inc-bl-category') as HTMLInputElement).checked,
+                    includeGroup: rule.inclusions.includeGroup,
+                    includeShift: (this.container.querySelector('#inc-bl-shift') as HTMLInputElement).checked,
+                    includeVendor: rule.inclusions.includeVendor
+                }
+            };
+
+            const preview = generateBatchNumberPreview(currentRule, { plant: this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL' });
+            const codeEl = this.container.querySelector('#preview-batch-code');
+            const lenEl = this.container.querySelector('#preview-batch-length');
+            const pillsEl = this.container.querySelector('#preview-batch-breakdown');
+
+            if (codeEl) codeEl.textContent = preview.code;
+            if (lenEl) lenEl.textContent = `${preview.length} Characters`;
+            if (pillsEl) pillsEl.innerHTML = this.renderBatchBreakdownPills(currentRule, preview.segments);
+        };
+
+        this.container.querySelectorAll('input, select').forEach(el => {
+            el.addEventListener('input', updateLivePreview);
+            el.addEventListener('change', updateLivePreview);
+        });
+
+        this.container.querySelector('#btn-save-batch-logic')?.addEventListener('click', () => {
+            const updatedRule: BatchNumberLogicRule = {
+                ...rule,
+                plant: this.selectedPlantForRule,
+                ruleName: (this.container.querySelector('#bl-rule-name') as HTMLInputElement).value.trim(),
+                delimiter: (this.container.querySelector('#bl-delimiter') as HTMLSelectElement).value,
+                customPrefix: (this.container.querySelector('#bl-custom-prefix') as HTMLInputElement).value.trim(),
+                sequencePadding: parseInt((this.container.querySelector('#bl-padding') as HTMLSelectElement).value, 10) || 3,
+                sequenceStartNumber: parseInt((this.container.querySelector('#bl-seq-start') as HTMLInputElement).value, 10) || 1,
+                resetFrequency: (this.container.querySelector('#bl-reset-freq') as HTMLSelectElement).value as any,
+                inclusions: {
+                    includeCustomPrefix: (this.container.querySelector('#inc-bl-prefix') as HTMLInputElement).checked,
+                    includePlant: (this.container.querySelector('#inc-bl-plant') as HTMLInputElement).checked,
+                    includeFinancialYear: (this.container.querySelector('#inc-bl-fy') as HTMLInputElement).checked,
+                    includeMonth: (this.container.querySelector('#inc-bl-month') as HTMLInputElement).checked,
+                    includeCategory: (this.container.querySelector('#inc-bl-category') as HTMLInputElement).checked,
+                    includeGroup: rule.inclusions.includeGroup,
+                    includeShift: (this.container.querySelector('#inc-bl-shift') as HTMLInputElement).checked,
+                    includeVendor: rule.inclusions.includeVendor
+                }
+            };
+
+            saveBatchLogicRule(updatedRule);
+            alert(`✅ Batch Number Logic for ${this.selectedPlantForRule} saved successfully!`);
+        });
+
+        this.container.querySelector('#btn-reset-batch-logic')?.addEventListener('click', () => {
+            if (confirm('Reset to default batch logic format?')) {
+                const def = DEFAULT_BATCH_RULES.find(r => r.plant === this.selectedPlantForRule) || DEFAULT_BATCH_RULES[0];
+                saveBatchLogicRule({ ...def, plant: this.selectedPlantForRule, id: `rule-batch-${this.selectedPlantForRule.toLowerCase()}` });
+                this.render();
+            }
+        });
+
+        this.container.querySelectorAll<HTMLButtonElement>('.master-type-tab').forEach(b => {
+            b.addEventListener('click', () => {
+                const t = b.dataset.type as MasterDataType;
+                if (t && t !== this.activeType) {
+                    this.activeType = t;
+                    this.view = 'list';
+                    this.render();
+                }
+            });
+        });
+    }
+
+    // ── CREATE / EDIT FORM (Standard Master Data) ─────────────────────────────
+    private renderFormPage(option: MasterDataOption | null) {
+        const isEdit = Boolean(option);
+        const def = this.typeDef();
+        const hasSerialBatch = this.supportsSerialAndBatchCode();
+        const plants = getMasterData('plant');
+
+        this.container.innerHTML = `
+        <div class="entity-manager-root">
+            <div class="master-type-nav">
+                ${MASTER_DATA_TYPES.map(t => `
+                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${t.type}">
+                        <span>${t.icon}</span> <span>${t.label}</span>
+                    </button>
+                `).join('')}
+            </div>
+
+            <div class="manager-card-panel" style="max-width:640px;margin:0 auto;width:100%;">
+                <div class="panel-header-row">
+                    <div>
+                        <h2 class="panel-heading">${isEdit ? '✏️ Edit' : '➕ Add'} ${def.label.replace(/s$/, '')}</h2>
+                        <p class="panel-subheading">Enter details for this master option.</p>
+                    </div>
+                </div>
+
+                <form class="modal-form-grid" id="form-master-data" onsubmit="return false;" style="padding:20px 0;">
+                    <div class="form-group">
+                        <label style="font-weight:600;">Unique ID / Code *</label>
+                        <input type="text" id="m-code" class="form-control-input" value="${option?.code || ''}" ${isEdit ? 'readonly style="background:var(--surface-muted);"' : ''} placeholder="e.g. KSPL" />
+                        <small style="color:var(--text-secondary);font-size:0.72rem;">Unique identifier used across the application.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="font-weight:600;">Display Name / Label *</label>
+                        <input type="text" id="m-label" class="form-control-input" value="${option?.label || ''}" placeholder="e.g. KSPL" />
+                    </div>
+
+                    ${this.isPlant() ? `
+                        <div class="form-group">
+                            <label style="font-weight:600;">Plant Code (Numeric SAP / ERP Code)</label>
+                            <input type="text" id="m-plantcode" class="form-control-input" value="${option?.plantCode || ''}" placeholder="e.g. 8600" />
+                            <small style="color:var(--text-secondary);font-size:0.72rem;">Official 4-digit ERP plant code.</small>
                         </div>
                     ` : ''}
 
                     ${this.isVendor() ? `
-                        <div class="form-group col-span-2" style="grid-column:1 / -1;">
-                            <label style="font-weight:600;">Plant Code *</label>
-                            ${plants.length > 0 ? `
-                                <select id="m-plantcode" class="form-control-input" required>
-                                    <option value="">-- Select Plant --</option>
-                                    ${plants.map(p => {
-                                        const val = p.plantCode || p.code;
-                                        const selected = option?.plantCode === val || option?.plantCode === p.code || option?.plantCode === p.label;
-                                        return `<option value="${val}" ${selected ? 'selected' : ''}>🏭 ${p.label} (${p.plantCode || p.code})</option>`;
-                                    }).join('')}
-                                    ${option?.plantCode && !plants.some(p => (p.plantCode || p.code) === option.plantCode || p.code === option.plantCode || p.label === option.plantCode) ? `
-                                        <option value="${option.plantCode}" selected>🏭 ${option.plantCode}</option>
-                                    ` : ''}
-                                </select>
-                            ` : `
-                                <input type="text" id="m-plantcode" class="form-control-input" required value="${option?.plantCode || ''}" placeholder="e.g. 8600 / KSPL" />
-                            `}
-                            <small style="color:var(--text-secondary);font-size:0.72rem;">Select the plant that this vendor is associated with.</small>
+                        <div class="form-group">
+                            <label style="font-weight:600;">Mapped Plant Code *</label>
+                            <select id="m-plantcode" class="filter-dropdown" style="width:100%;">
+                                <option value="">Select Associated Plant...</option>
+                                ${plants.map(p => `<option value="${p.plantCode || p.code}" ${option?.plantCode === (p.plantCode || p.code) ? 'selected' : ''}>${p.label} (Plant ${p.plantCode || p.code})</option>`).join('')}
+                            </select>
                         </div>
                     ` : ''}
 
-                    ${this.isPlant() ? `
-                        <div class="form-group col-span-2" style="grid-column:1 / -1;">
-                            <label style="font-weight:600;">Plant Code (Numeric)</label>
-                            <input type="text" id="m-plantcode" class="form-control-input" value="${option?.plantCode || ''}" placeholder="e.g. 8600" />
-                            <small style="color:var(--text-secondary);font-size:0.72rem;">Numeric ERP / Plant identifier.</small>
+                    ${this.isFinancialYear() ? `
+                        <div class="form-group">
+                            <label style="font-weight:600;">Financial Year Structure</label>
+                            <select id="m-fystructure" class="filter-dropdown" style="width:100%;">
+                                <option value="April to March" ${option?.fyStructure === 'April to March' ? 'selected' : ''}>April to March (Apr – Mar)</option>
+                                <option value="January to December" ${option?.fyStructure === 'January to December' ? 'selected' : ''}>January to December (Jan – Dec)</option>
+                                <option value="July to June" ${option?.fyStructure === 'July to June' ? 'selected' : ''}>July to June (Jul – Jun)</option>
+                                <option value="October to September" ${option?.fyStructure === 'October to September' ? 'selected' : ''}>October to September (Oct – Sep)</option>
+                            </select>
+                        </div>
+                    ` : ''}
+
+                    ${this.isVariable() ? `
+                        <div class="form-group">
+                            <label style="font-weight:600;">Default Value (Optional)</label>
+                            <input type="text" id="m-default" class="form-control-input" value="${option?.defaultValue || ''}" placeholder="e.g. Standard" />
                         </div>
                     ` : ''}
 
@@ -365,5 +1034,3 @@ export class MasterDataManagerView {
         });
     }
 }
-
-

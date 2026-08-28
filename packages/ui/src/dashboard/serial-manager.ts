@@ -4,6 +4,7 @@ import { PREBUILT_TEMPLATES } from './templates-data';
 import { supabaseService } from '../supabase';
 import { ProductRecord, SerializedUnit, formatINR, parseINRValue } from './product-manager';
 import { BatchRecord } from './batch-manager';
+import { getSerialLogicRule, generateSerialNumberPreview, generateAutomatedSerials } from './serial-batch-logic';
 
 export interface SerialManagerOptions {
     container: HTMLElement;
@@ -552,26 +553,55 @@ export class SerialManagerView {
         if (!modalRoot) return;
 
         const defaultProduct = this.products.find(p => p.id === preselectedProductId) || this.products[0];
+        let currentPlant = defaultProduct?.plant || 'KSPL';
+        let currentRule = getSerialLogicRule(currentPlant);
+        let preview = generateSerialNumberPreview(currentRule, {
+            plant: currentPlant,
+            product: defaultProduct,
+            color: defaultProduct?.color
+        });
 
         modalRoot.innerHTML = `
         <div class="modal-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
-            <div class="modal-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); width: 100%; max-width: 580px; box-shadow: var(--shadow-md); overflow: hidden;">
+            <div class="modal-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); width: 100%; max-width: 600px; box-shadow: var(--shadow-md); overflow: hidden;">
                 <div class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="font-size: 1.25rem;">🔢</span>
-                        <h3 style="margin: 0; font-size: 1.125rem; font-weight: 700; color: var(--text-primary);">Generate Serial Numbers</h3>
+                        <div>
+                            <h3 style="margin: 0; font-size: 1.125rem; font-weight: 700; color: var(--text-primary);">Generate Unique Serial Numbers</h3>
+                            <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary);">Driven by Plant Master Serialization Logic &amp; Rules</p>
+                        </div>
                     </div>
                     <button class="btn-modal-close" id="btn-close-serial-modal" style="background: none; border: none; font-size: 1.25rem; cursor: pointer; color: var(--text-secondary);">✕</button>
                 </div>
 
                 <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 16px; max-height: 80vh; overflow-y: auto;">
+                    
+                    <!-- LIVE PREVIEW FROM MASTER LOGIC -->
+                    <div style="background: var(--surface-muted); border: 1.5px solid var(--accent); border-radius: 10px; padding: 14px 16px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                            <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent); text-transform: uppercase;">
+                                Master Format Preview:
+                            </span>
+                            <span class="nav-item-badge badge-indigo" id="modal-serial-preview-len" style="font-family: monospace;">
+                                ${preview.length} Chars
+                            </span>
+                        </div>
+                        <div id="modal-serial-preview-code" style="font-size: 1.375rem; font-weight: 800; font-family: monospace; color: var(--text-primary);">
+                            ${preview.code}
+                        </div>
+                        <div style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 4px;">
+                            Rule: <strong>${currentRule.ruleName}</strong> (${currentRule.sequencePadding} digits, reset: ${currentRule.resetFrequency})
+                        </div>
+                    </div>
+
                     <!-- PRODUCT SELECTION -->
                     <div class="form-group">
                         <label style="font-weight: 700; font-size: 0.8125rem;">Target Product *</label>
                         <select id="gen-serial-product" class="filter-dropdown" style="width: 100%;">
                             ${this.products.map(p => `
                                 <option value="${p.id}" ${p.id === defaultProduct?.id ? 'selected' : ''}>
-                                    ${p.sku} — ${p.title} (${p.plant || 'KSPL'})
+                                    ${p.sku} — ${p.title} (${p.plant || 'KSPL'} | Color: ${p.color || 'CP'})
                                 </option>
                             `).join('')}
                         </select>
@@ -589,113 +619,92 @@ export class SerialManagerView {
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <div class="form-group">
                             <label style="font-weight: 700; font-size: 0.8125rem;">Quantity to Generate *</label>
-                            <input type="number" id="gen-serial-qty" min="1" max="1000" value="10" style="width: 100%; font-weight: 700;" />
+                            <input type="number" id="gen-serial-qty" min="1" max="5000" value="10" style="width: 100%; font-weight: 700;" />
                         </div>
                         <div class="form-group">
-                            <label style="font-weight: 700; font-size: 0.8125rem;">Plant</label>
+                            <label style="font-weight: 700; font-size: 0.8125rem;">Manufacturing Plant</label>
                             <select id="gen-serial-plant" class="filter-dropdown" style="width: 100%;">
-                                <option value="KSPL" selected>KSPL - Kajaria Sanitaryware</option>
-                                <option value="KGPL">KGPL - Kajaria Gailpur</option>
-                                <option value="KBPL">KBPL - Kajaria Bathware</option>
+                                <option value="KSPL" ${currentPlant === 'KSPL' ? 'selected' : ''}>KSPL - Kajaria Sanitaryware</option>
+                                <option value="KGPL" ${currentPlant === 'KGPL' ? 'selected' : ''}>KGPL - Kajaria Gailpur</option>
+                                <option value="KBPL" ${currentPlant === 'KBPL' ? 'selected' : ''}>KBPL - Kajaria Bathware</option>
                             </select>
                         </div>
                     </div>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <div class="form-group">
-                            <label style="font-weight: 700; font-size: 0.8125rem;">Serial Prefix</label>
-                            <input type="text" id="gen-serial-prefix" value="${defaultProduct?.serialPrefix || 'KSPL-2026-'}" style="width: 100%; font-family: monospace;" />
+                            <label style="font-weight: 700; font-size: 0.8125rem;">Starting Sequence #</label>
+                            <input type="number" id="gen-serial-seq" min="1" value="${currentRule.currentSequence || currentRule.sequenceStartNumber || 1}" style="width: 100%; font-weight: 700;" />
                         </div>
                         <div class="form-group">
-                            <label style="font-weight: 700; font-size: 0.8125rem;">Starting Sequence #</label>
-                            <input type="number" id="gen-serial-seq" min="1" value="${defaultProduct?.nextSerialSequence || (this.serials.length + 1)}" style="width: 100%;" />
+                            <label style="font-weight: 700; font-size: 0.8125rem;">Initial Inventory Status</label>
+                            <select id="gen-serial-initial-status" class="filter-dropdown" style="width: 100%;">
+                                <option value="In Stock" selected>In Stock (Ready for Dispatch)</option>
+                                <option value="Quality Passed">Quality Passed (QC Approved)</option>
+                                <option value="Dispatched">Dispatched</option>
+                            </select>
                         </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label style="font-weight: 700; font-size: 0.8125rem;">Initial Status</label>
-                        <select id="gen-serial-initial-status" class="filter-dropdown" style="width: 100%;">
-                            <option value="In Stock" selected>In Stock (Ready for Dispatch)</option>
-                            <option value="Quality Passed">Quality Passed (QC Approved)</option>
-                            <option value="Dispatched">Dispatched</option>
-                        </select>
                     </div>
                 </div>
 
                 <div class="modal-footer" style="padding: 16px 20px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 10px; background: var(--surface-muted);">
                     <button class="btn btn-outline" id="btn-cancel-serial-gen">Cancel</button>
-                    <button class="btn btn-primary" id="btn-submit-serial-gen">⚡ Generate &amp; Save</button>
+                    <button class="btn btn-primary" id="btn-submit-serial-gen">⚡ Generate Unique Serials</button>
                 </div>
             </div>
         </div>
         `;
 
-        // Bind modal events
+        const updateModalPreview = () => {
+            const pid = (modalRoot.querySelector('#gen-serial-product') as HTMLSelectElement).value;
+            const prod = this.products.find(p => p.id === pid) || defaultProduct;
+            const plant = (modalRoot.querySelector('#gen-serial-plant') as HTMLSelectElement).value;
+            const seq = parseInt((modalRoot.querySelector('#gen-serial-seq') as HTMLInputElement).value, 10) || 1;
+            const rule = getSerialLogicRule(plant);
+            const p = generateSerialNumberPreview(rule, { plant, product: prod, sequence: seq, color: prod?.color });
+
+            const codeEl = modalRoot.querySelector('#modal-serial-preview-code');
+            const lenEl = modalRoot.querySelector('#modal-serial-preview-len');
+            if (codeEl) codeEl.textContent = p.code;
+            if (lenEl) lenEl.textContent = `${p.length} Chars`;
+        };
+
         modalRoot.querySelector('#btn-close-serial-modal')?.addEventListener('click', () => { modalRoot.innerHTML = ''; });
         modalRoot.querySelector('#btn-cancel-serial-gen')?.addEventListener('click', () => { modalRoot.innerHTML = ''; });
 
-        modalRoot.querySelector('#gen-serial-product')?.addEventListener('change', (e) => {
-            const pid = (e.target as HTMLSelectElement).value;
-            const prod = this.products.find(p => p.id === pid);
-            if (prod) {
-                const prefixEl = modalRoot.querySelector('#gen-serial-prefix') as HTMLInputElement;
-                const seqEl = modalRoot.querySelector('#gen-serial-seq') as HTMLInputElement;
-                if (prefixEl) prefixEl.value = prod.serialPrefix || `${prod.plant || 'KSPL'}-2026-`;
-                if (seqEl) seqEl.value = String(prod.nextSerialSequence || (this.serials.length + 1));
-            }
-        });
+        modalRoot.querySelector('#gen-serial-product')?.addEventListener('change', updateModalPreview);
+        modalRoot.querySelector('#gen-serial-plant')?.addEventListener('change', updateModalPreview);
+        modalRoot.querySelector('#gen-serial-seq')?.addEventListener('input', updateModalPreview);
 
         modalRoot.querySelector('#btn-submit-serial-gen')?.addEventListener('click', () => {
             const pid = (modalRoot.querySelector('#gen-serial-product') as HTMLSelectElement).value;
             const prod = this.products.find(p => p.id === pid);
+            if (!prod) {
+                alert('Please select a valid product.');
+                return;
+            }
+
             const batchNum = (modalRoot.querySelector('#gen-serial-batch') as HTMLInputElement).value.trim();
             const qty = parseInt((modalRoot.querySelector('#gen-serial-qty') as HTMLInputElement).value, 10) || 1;
             const plant = (modalRoot.querySelector('#gen-serial-plant') as HTMLSelectElement).value;
-            const prefix = (modalRoot.querySelector('#gen-serial-prefix') as HTMLInputElement).value.trim() || 'SN-';
-            let startSeq = parseInt((modalRoot.querySelector('#gen-serial-seq') as HTMLInputElement).value, 10) || 1;
+            const startSeq = parseInt((modalRoot.querySelector('#gen-serial-seq') as HTMLInputElement).value, 10) || 1;
             const status = (modalRoot.querySelector('#gen-serial-initial-status') as HTMLSelectElement).value as any;
 
-            const newUnits: SerializedUnit[] = [];
-            for (let i = 0; i < qty; i++) {
-                const seqNum = startSeq + i;
-                const paddedSeq = String(seqNum).padStart(4, '0');
-                const serialNumber = `${prefix}${paddedSeq}`;
+            const { units, nextSequence } = generateAutomatedSerials({
+                product: prod,
+                quantity: qty,
+                batchNumber: batchNum || undefined,
+                plant,
+                startSequence: startSeq,
+                status
+            });
 
-                newUnits.push({
-                    id: `sn-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
-                    serialNumber,
-                    productId: prod ? prod.id : 'custom',
-                    sku: prod ? prod.sku : 'CUSTOM-SKU',
-                    productTitle: prod ? prod.title : 'Custom Product',
-                    category: prod ? prod.category : 'General',
-                    plant,
-                    group: prod?.group || 'Standard',
-                    color: prod?.color || 'CP',
-                    warranty: prod?.warranty || '5 Years',
-                    price: prod?.price || '₹0.00',
-                    dp: prod ? String(prod.dp) : '₹0.00',
-                    mrp: prod ? String(prod.mrp) : '₹0.00',
-                    variables: prod?.defaultVariables || {},
-                    createdAt: new Date().toISOString(),
-                    status,
-                    lastPrintedAt: null,
-                    printCount: 0,
-                    batchNumber: batchNum || undefined
-                } as any);
-            }
-
-            this.serials = [...newUnits, ...this.serials];
+            this.serials = [...units, ...this.serials];
             this.saveSerials();
-
-            // Update product sequence
-            if (prod) {
-                prod.nextSerialSequence = startSeq + qty;
-                localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(this.products));
-            }
 
             modalRoot.innerHTML = '';
             this.render();
-            alert(`✅ Successfully generated ${qty} serial number(s)!`);
+            alert(`✅ Successfully generated ${units.length} unique serial number(s) adhering to ${plant} logic!`);
         });
     }
 
