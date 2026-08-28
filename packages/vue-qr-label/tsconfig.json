@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "ES2020",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2020", "DOM"],
+    "jsx": "preserve",
+    "strict": false,
+    "skipLibCheck": true,
+    "paths": {
+      "qrlayout-ui": ["../ui/src/index.ts"],
+      "qrlayout-core": ["../core/src/index.ts"]
+    }
+  },
+  "include": ["src", "src/**/*.vue"]
+}

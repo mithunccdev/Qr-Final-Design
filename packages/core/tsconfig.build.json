@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": [
+    "src/index.ts",
+    "src/pdf.ts",
+    "src/jsbarcode.d.ts",
+    "src/layout/**/*.ts",
+    "src/printer/**/*.ts",
+    "src/qr/**/*.ts",
+    "src/utils/**/*.ts"
+  ]
+}

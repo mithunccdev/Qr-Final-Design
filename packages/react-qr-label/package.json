@@ -1,0 +1,83 @@
+{
+  "name": "react-qr-label",
+  "version": "0.2.3",
+  "description": "An embeddable, visual drag-and-drop QR label designer for React. Generate layouts and export to PDF, PNG, and ZPL formats.",
+  "keywords": [
+    "react",
+    "react-component",
+    "qr-code",
+    "qrcode",
+    "qr-layout",
+    "qr-label",
+    "react-qr-label",
+    "react-label-designer",
+    "label-designer",
+    "label-generator",
+    "badge-designer",
+    "shipping-label",
+    "inventory-label",
+    "drag-and-drop",
+    "drag-drop",
+    "visual-editor",
+    "pdf-export",
+    "png-export",
+    "zpl-printer",
+    "zpl-generator",
+    "sticker-printer",
+    "zebra-printer",
+    "thermal-printer",
+    "batch-printing",
+    "typescript",
+    "barcode",
+    "barcode-generator",
+    "label-maker",
+    "react-barcode"
+  ],
+  "author": "Mithun Dev",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/react-qr-label.cjs",
+  "module": "./dist/react-qr-label.js",
+  "types": "./dist/react-qr-label.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/react-qr-label.d.ts",
+      "import": "./dist/react-qr-label.js",
+      "require": "./dist/react-qr-label.cjs"
+    },
+    "./pdf": {
+      "types": "./dist/pdf.d.ts",
+      "import": "./dist/pdf.js",
+      "require": "./dist/pdf.cjs"
+    },
+    "./style.css": "./dist/react-qr-label.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "qrlayout-core": "^1.1.10",
+    "qrlayout-ui": "^1.1.5"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.3.3",
+    "vite": "^7.2.7",
+    "vite-plugin-dts": "^4.5.4"
+  }
+}

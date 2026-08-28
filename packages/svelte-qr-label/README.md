@@ -1,0 +1,251 @@
+# svelte-qr-label
+
+Svelte 5 component for designing and printing QR code labels.
+
+[![npm version](https://img.shields.io/npm/v/svelte-qr-label.svg)](https://www.npmjs.com/package/svelte-qr-label)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../../LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Enabled-blue.svg)](https://www.typescriptlang.org/)
+
+A Svelte 5 component to design labels with text, QR codes, and barcodes. Easily create layouts, use dynamic data, and export to PDF, PNG, or ZPL thermal printers.
+
+![QR Layout Designer Screenshot](../../assets/layout_designer.png)
+
+---
+
+## Features
+
+- **Drag & Drop Designer** — visually place and resize text, QR, and barcode elements on a canvas
+- **Multi-Select** — Ctrl+Click or Ctrl+A to select multiple elements; drag them all at once
+- **Alignment Tools** — align selected elements relative to each other or to the label edges
+- **Always-visible borders** — field outlines are always shown so you can see where elements are while editing others
+- **Live Preview** — see your label render with real sample data as you design
+- **Preview PDF / Preview ZPL** — built-in buttons to preview the label as a PDF or as a Labelary-rendered ZPL image (203 / 300 / 600 DPI)
+- **`{{variable}}` Data Binding** — bind fields like `{{name}}`, `{{id}}`, `{{department}}` from your entity schema
+- **Multi-Variable QR** — join multiple fields into one QR scan with a configurable separator
+- **Rich Text Styling** — font size, weight, alignment; color, font family, word wrap, and line height
+- **Label Size Presets** — common shipping, badge, and tag sizes built in
+- **Snap-to-Grid** — optional 1-unit grid snapping while dragging
+- **Undo / Redo** — 20-step history (Ctrl+Z / Ctrl+Y)
+- **Keyboard Shortcuts** — Delete, Arrow nudge, Shift+Arrow, Ctrl+D duplicate, Ctrl+A select all, Escape
+- **Dark Mode** — built-in light and dark themes
+- **Flexible Units** — design in mm, cm, in, or px
+- **JSON Output** — saves a compact layout JSON you store in your backend
+
+---
+
+## Installation
+
+```bash
+npm install svelte-qr-label
+```
+
+`qrlayout-core` and `qrlayout-ui` are included as direct dependencies — no extra installs needed.
+
+**Requirements:** Svelte 5.0+ as a peer dependency.
+
+---
+
+## Quick Start
+
+```svelte
+<script lang="ts">
+  import QRLabelDesigner from 'svelte-qr-label';
+  import 'svelte-qr-label/style.css';
+  import type { StickerLayout, EntitySchema } from 'svelte-qr-label';
+
+  const schemas: Record<string, EntitySchema> = {
+    employee: {
+      label: 'Employee',
+      fields: [
+        { name: 'fullName',   label: 'Full Name'   },
+        { name: 'employeeId', label: 'Employee ID' },
+        { name: 'department', label: 'Department'  },
+      ],
+      sampleData: {
+        fullName: 'Alice Johnson',
+        employeeId: 'EMP-001',
+        department: 'Engineering',
+      },
+    },
+  };
+
+  function handleSave(layout: StickerLayout) {
+    console.log('Saved:', layout);
+  }
+</script>
+
+<div style="width: 100vw; height: 100vh;">
+  <QRLabelDesigner
+    entitySchemas={schemas}
+    onsave={handleSave}
+  />
+</div>
+```
+
+### Loading an existing layout
+
+```svelte
+<script lang="ts">
+  import { QRLabelDesigner } from 'svelte-qr-label';
+  import 'svelte-qr-label/style.css';
+  import type { StickerLayout } from 'svelte-qr-label';
+
+  let savedLayout = $state<StickerLayout | undefined>(
+    JSON.parse(localStorage.getItem('myLayout') ?? 'null') ?? undefined
+  );
+
+  function handleSave(layout: StickerLayout) {
+    localStorage.setItem('myLayout', JSON.stringify(layout));
+    savedLayout = layout;
+  }
+</script>
+
+<QRLabelDesigner
+  initialLayout={savedLayout}
+  entitySchemas={schemas}
+  onsave={handleSave}
+/>
+```
+
+---
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `initialLayout` | `StickerLayout` | ❌ | Layout to pre-load on mount. Re-creates designer only when `initialLayout.id` changes. |
+| `entitySchemas` | `Record<string, EntitySchema>` | ❌ | Field definitions for `{{variable}}` binding and live preview. |
+| `onsave` | `(layout: StickerLayout) => void` | ❌ | Called when the user clicks "Save Layout". Uses Svelte 5's lowercase event convention. |
+
+> **Svelte 5 Runes Optimization:** Internal effect dependencies use `untrack()` so dragging or resizing canvas elements mutates state locally without re-instantiating the designer or closing the side property drawer. `onsave` updates reactively.
+
+---
+
+## Save & Print Workflow
+
+The designer produces a plain JSON layout object. Pass it with real data to `StickerPrinter` (re-exported from `svelte-qr-label`) to generate PDF, PNG, or ZPL output.
+
+### Export to PDF
+
+> Requires `jspdf`: `npm install jspdf`
+
+```typescript
+import { StickerPrinter } from 'svelte-qr-label';
+
+const printer = new StickerPrinter();
+const pdf = await printer.exportToPDF(layoutJSON, records);
+pdf.save('badges.pdf');
+```
+
+### Export to ZPL (Zebra thermal printers)
+
+```typescript
+import { StickerPrinter } from 'svelte-qr-label';
+
+const printer = new StickerPrinter();
+
+// Standard (sync) — good for 203 DPI
+const zplPages = printer.exportToZPL(layoutJSON, records, { dpi: 203 });
+
+// Async — use for 300/600 DPI; ensures QR codes print at the correct size
+const zplPages = await printer.exportToZPLAsync(layoutJSON, records, { dpi: 300 });
+```
+
+### Export to PNG
+
+```typescript
+import { StickerPrinter } from 'svelte-qr-label';
+
+const printer = new StickerPrinter();
+
+for (const record of records) {
+  const blob = await printer.exportToPNG(layoutJSON, record);
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: `${record.id}.png`,
+  });
+  a.click();
+}
+```
+
+---
+
+## TypeScript Types
+
+```typescript
+interface StickerLayout {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  unit: 'mm' | 'cm' | 'in' | 'px';
+  backgroundColor?: string;
+  targetEntity?: string;
+  elements: StickerElement[];
+}
+
+interface StickerElement {
+  id: string;
+  type: 'text' | 'qr' | 'barcode';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  content: string;
+  qrSeparator?: string;
+  barcodeFormat?: 'CODE128' | 'EAN13' | 'UPCA' | 'CODE39' | 'ITF14';
+  style?: {
+    fontSize?: number;
+    fontWeight?: 'normal' | 'bold';
+    textAlign?: 'left' | 'center' | 'right';
+    verticalAlign?: 'top' | 'middle' | 'bottom';
+    fontFamily?: string;
+    color?: string;
+    backgroundColor?: string;
+    wordWrap?: boolean;
+    lineHeight?: number;
+  };
+}
+
+interface EntitySchema {
+  label: string;
+  fields: EntityField[];
+  sampleData: Record<string, string | number>;
+}
+
+interface EntityField {
+  name: string;
+  label: string;
+}
+```
+
+---
+
+## Use Cases
+
+| Industry | Application |
+| :--- | :--- |
+| 🏭 Manufacturing & Warehousing | Packing slips, bin location tags, shipping labels |
+| 🎟️ Events & Conferences | Attendee badges with QR check-in codes |
+| 🏥 Healthcare | Patient wristbands, specimen labels, asset tracking |
+| 📦 Inventory & Retail | SKU labels, price tags, product QR codes |
+| 🏢 HR & Access Control | Employee ID cards, visitor passes |
+| 🔧 Maintenance & MRO | Machine asset tags with scannable maintenance links |
+
+---
+
+## Related Packages
+
+| Package | Description |
+| :--- | :--- |
+| [`qrlayout-core`](https://www.npmjs.com/package/qrlayout-core) | Headless engine — render PNG, PDF, ZPL without the UI |
+| [`qrlayout-ui`](https://www.npmjs.com/package/qrlayout-ui) | Framework-agnostic designer (vanilla TS) |
+| [`react-qr-label`](https://www.npmjs.com/package/react-qr-label) | React wrapper |
+| [`vue-qr-label`](https://www.npmjs.com/package/vue-qr-label) | Vue 3 wrapper |
+
+---
+
+## License
+
+MIT © Mithun Dev
+
