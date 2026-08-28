@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 import type { ProductRecord, SerializedUnit } from './dashboard/product-manager';
+import type { BatchRecord } from './dashboard/batch-manager';
 import type { EmployeeRecord } from './dashboard/employee-manager';
 import type { PrebuiltTemplate } from './dashboard/templates-data';
 import type { MasterDataOption, MasterDataType } from './dashboard/master-data';
@@ -716,7 +717,8 @@ export class SupabaseService {
                 createdAt: row.created_at || new Date().toISOString(),
                 status: row.status as any || 'In Stock',
                 lastPrintedAt: row.last_printed_at || null,
-                printCount: Number(row.print_count || 0)
+                printCount: Number(row.print_count || 0),
+                batchNumber: row.batch_number || '' as any
             }));
         } catch (e) {
             console.error('Error fetching serials from Supabase', e);
@@ -746,6 +748,7 @@ export class SupabaseService {
                 status: serial.status,
                 last_printed_at: serial.lastPrintedAt,
                 print_count: serial.printCount,
+                batch_number: (serial as any).batchNumber || '',
                 created_by: by,
                 updated_by: by,
                 created_at: serial.createdAt,
@@ -785,6 +788,7 @@ export class SupabaseService {
                 status: serial.status,
                 last_printed_at: serial.lastPrintedAt,
                 print_count: serial.printCount,
+                batch_number: (serial as any).batchNumber || '',
                 created_by: by,
                 updated_by: by,
                 created_at: serial.createdAt,
@@ -804,6 +808,64 @@ export class SupabaseService {
             const { error } = await this.client.from('serialized_units').delete().eq('id', id);
             return !error;
         } catch (e) {
+            return false;
+        }
+    }
+
+    // ── Production batches (batch ⇄ serials ⇄ product mapping) ───────────────
+    public async fetchBatches(): Promise<BatchRecord[] | null> {
+        if (!this.client || !this.config.enabled) return null;
+        try {
+            const { data, error } = await this.client
+                .from('batches')
+                .select('*')
+                .order('generated_at', { ascending: false });
+            if (error) { console.warn('Supabase fetchBatches error:', error.message); return null; }
+
+            return (data || []).map((r: any): BatchRecord => ({
+                id: r.id,
+                batchNumber: r.batch_number,
+                productId: r.product_id || undefined,
+                sku: r.sku || '',
+                productTitle: r.product_title || '',
+                plant: r.plant || 'KSPL',
+                mfgDate: r.mfg_date || '',
+                expDate: '',
+                lotQuantity: Number(r.lot_quantity || 0),
+                shift: r.shift || 'General',
+                status: r.status as any || 'Approved',
+                createdAt: r.generated_at || r.created_at || new Date().toISOString(),
+                printCount: 0
+            }));
+        } catch (e) {
+            console.error('Error fetching batches', e);
+            return null;
+        }
+    }
+
+    public async saveBatch(batch: BatchRecord): Promise<boolean> {
+        if (!this.client || !this.config.enabled) return false;
+        const by = this.currentUserProfile?.email || this.currentUserProfile?.id || null;
+        try {
+            const { error } = await this.client.from('batches').upsert({
+                id: batch.id,
+                batch_number: batch.batchNumber,
+                product_id: batch.productId || '',
+                sku: batch.sku,
+                product_title: batch.productTitle,
+                plant: batch.plant || 'KSPL',
+                lot_quantity: batch.lotQuantity || 0,
+                mfg_date: batch.mfgDate || '',
+                shift: batch.shift || 'General',
+                status: batch.status || 'Approved',
+                generated_at: batch.createdAt || new Date().toISOString(),
+                created_by: by,
+                updated_by: by,
+                updated_at: new Date().toISOString()
+            });
+            return !error;
+        } catch (e: any) {
+            console.warn('Supabase saveBatch error:', e?.message || e);
             return false;
         }
     }

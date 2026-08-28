@@ -15,6 +15,12 @@ import {
     buildPrinterContext
 } from './print-media';
 import type { ProductRecord } from './product-manager';
+import {
+    generateAutomatedSerials,
+    getBatchLogicRule,
+    generateBatchNumberPreview
+} from './serial-batch-logic';
+import { getMasterData } from './master-data';
 import { supabaseService, UserProfile } from '../supabase';
 
 // ── Batch number helper ──────────────────────────────────────────────────────
@@ -70,6 +76,7 @@ export class QRPrintDashboard {
     private batchNumber: string = '';
     private productSearchQuery: string = '';
     private comboOpen = false;
+    private serialQty = 1;
 
     private renderer: BatchSheetRenderer;
     private sheetCanvas!: HTMLCanvasElement;
@@ -107,6 +114,83 @@ export class QRPrintDashboard {
         this.products = allowAll
             ? all
             : all.filter(p => userPlants.includes(p.plant || ''));
+    }
+
+    /**
+     * Generate batch data (one row per unit) with sequential serial numbers for the
+     * selected product, all under a single unique batch number. Persists to local
+     * + Supabase. Only one product is batch-printed at a time.
+     */
+    private async generateSerialsForProduct() {
+        const product = this.products.find(p => p.id === this.selectedProductId);
+        const qty = Math.max(1, parseInt((this.container.querySelector('#print-serial-qty') as HTMLInputElement)?.value || '1', 10) || 1);
+        if (!product) { alert('Please select a product to generate serial numbers.'); return; }
+        if (qty > 1000) { alert('Quantity too large (max 1000).'); return; }
+
+        const plant = product.plant || 'KSPL';
+        const batchRule = getBatchLogicRule(plant);
+        const batchPreview = generateBatchNumberPreview(batchRule, { plant, product, sequence: Date.now() % 100000 + 1 });
+        const batchNumber = batchPreview.code || `BAT-${Date.now()}`;
+
+        const { units } = generateAutomatedSerials({ product, quantity: qty, batchNumber, plant });
+
+        // Update local serials store (serial page reads it) + DB.
+        const localSerials = this.loadLocalSerials();
+        const merged = [...units, ...localSerials.filter(l => !units.some(u => u.id === l.id))];
+        this.saveLocalSerials(merged);
+        void supabaseService.batchSaveSerials(units);
+
+        // Record the batch (batch page reads it) + DB.
+        const batch = {
+            id: `bat-${Date.now()}`,
+            batchNumber,
+            productId: product.id,
+            sku: product.sku,
+            productTitle: product.title,
+            plant,
+            mfgDate: new Date().toISOString().slice(0, 10),
+            expDate: '',
+            lotQuantity: qty,
+            shift: 'General',
+            status: 'Approved' as any,
+            createdAt: new Date().toISOString(),
+            printCount: 0
+        };
+        const localBatches = this.loadLocalBatches();
+        this.saveLocalBatches([batch, ...localBatches.filter(b => b.batchNumber !== batchNumber)]);
+        void supabaseService.saveBatch(batch);
+
+        // Build the batch dataset rows (one per unit) so the print preview shows them.
+        this.dataset = units.map(u => ({
+            serialNumber: u.serialNumber,
+            batchNumber,
+            sku: u.sku,
+            title: u.productTitle,
+            productTitle: u.productTitle,
+            category: u.category,
+            plant: u.plant,
+            color: u.color,
+            warranty: u.warranty,
+            ...(u.variables || {})
+        }));
+        this.batchNumber = batchNumber;
+        this.selectAll();
+        this.currentSheetIndex = 0;
+        this.render();
+        alert(`✅ Generated ${units.length} serial(s) for ${product.sku} in batch ${batchNumber}.`);
+    }
+
+    private loadLocalSerials(): any[] {
+        try { const r = localStorage.getItem('qrlayout_db_serials_v2'); return r ? JSON.parse(r) : []; } catch { return []; }
+    }
+    private saveLocalSerials(list: any[]) {
+        try { localStorage.setItem('qrlayout_db_serials_v2', JSON.stringify(list)); } catch {}
+    }
+    private loadLocalBatches(): any[] {
+        try { const r = localStorage.getItem('qrlayout_db_batches_v2'); return r ? JSON.parse(r) : []; } catch { return []; }
+    }
+    private saveLocalBatches(list: any[]) {
+        try { localStorage.setItem('qrlayout_db_batches_v2', JSON.stringify(list)); } catch {}
     }
 
     /** Templates the current user is allowed to print (category-gated). */
@@ -463,6 +547,28 @@ export class QRPrintDashboard {
                     <!-- TAB CONTENT: BATCH DATA -->
                     <div class="print-tab-content" style="${this.activeTab === 'data' ? '' : 'display:none;'}">
                         <div class="data-manager-header">
+                            <!-- SERIAL GENERATION BAR -->
+                            <div class="serial-gen-bar">
+                                <div class="serial-gen-field">
+                                    <label>Product</label>
+                                    <select id="print-product-select" class="form-select-sm">
+                                        <option value="">Select a product…</option>
+                                        ${this.products.map(p => `
+                                            <option value="${p.id}" ${p.id === this.selectedProductId ? 'selected' : ''}>${p.sku} — ${p.title}</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+                                <div class="serial-gen-field" style="width:96px;">
+                                    <label>Quantity</label>
+                                    <input type="number" id="print-serial-qty" class="form-input-sm" min="1" max="1000" value="${this.serialQty}" />
+                                </div>
+                                <div class="serial-gen-field" style="flex:1;">
+                                    <label>Batch Number</label>
+                                    <input type="text" id="print-batch-number" class="form-input-sm" value="${this.batchNumber}" placeholder="Auto-generated on generate" readonly />
+                                </div>
+                                <button class="btn btn-primary btn-xs" id="btn-generate-serials">⚡ Generate Serial Number</button>
+                            </div>
+
                             <div class="data-actions-row">
                                 <button class="btn btn-outline btn-xs" id="btn-add-row">+ Add Row</button>
                                 <button class="btn btn-outline btn-xs" id="btn-gen-sample">+ Generate Mock Data</button>
@@ -750,8 +856,15 @@ export class QRPrintDashboard {
         q('#tab-btn-sheet')?.addEventListener('click', () => { this.activeTab = 'sheet'; this.render(); });
 
         // Add Row
-        q('#btn-add-row')?.addEventListener('click', () => {
-            const vars = this.extractVariables();
+        // Generate serial numbers for the selected product
+        q('#btn-generate-serials')?.addEventListener('click', () => { void this.generateSerialsForProduct(); });
+        q<HTMLSelectElement>('#print-product-select')?.addEventListener('change', (e) => {
+            this.selectedProductId = (e.target as HTMLSelectElement).value;
+            this.batchNumber = '';
+            this.render();
+        });
+
+        q('#btn-add-row')?.addEventListener('click', () => {            const vars = this.extractVariables();
             const newRow: Record<string, any> = {};
             const num = this.dataset.length + 1;
             vars.forEach(v => newRow[v] = `New Item #${num}`);

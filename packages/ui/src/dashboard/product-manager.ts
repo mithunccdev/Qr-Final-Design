@@ -29,6 +29,7 @@ export interface SerializedUnit {
     status: 'In Stock' | 'Quality Passed' | 'Dispatched' | 'Returned';
     lastPrintedAt: string | null;
     printCount: number;
+    batchNumber?: string;
 }
 
 export interface ProductRecord {

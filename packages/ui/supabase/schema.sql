@@ -252,6 +252,7 @@ alter table public.serialized_units add column if not exists last_printed_at tim
 alter table public.serialized_units add column if not exists print_count integer default 0;
 alter table public.serialized_units add column if not exists created_by text;
 alter table public.serialized_units add column if not exists updated_by text;
+alter table public.serialized_units add column if not exists batch_number text;
 
 create index if not exists serialized_units_sn_idx on public.serialized_units (serial_number);
 create index if not exists serialized_units_prod_idx on public.serialized_units (product_id);
@@ -360,3 +361,39 @@ create policy "company_profile_update" on public.company_profile
 drop policy if exists "company_profile_delete" on public.company_profile;
 create policy "company_profile_delete" on public.company_profile
   for delete using (auth.role() = ''authenticated'');
+
+
+-- ?? Production batches (one batch per printed product selection) ?????????????
+create table if not exists public.batches (
+    id text primary key,
+    batch_number text not null unique,
+    product_id text,
+    sku text default '',
+    product_title text default '',
+    plant text default '',
+    lot_quantity integer default 0,
+    mfg_date text default '',
+    shift text default '',
+    status text default ''In Stock'',
+    generated_at timestamptz not null default now(),
+    created_by text,
+    updated_by text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+drop trigger if exists trg_batches_updated_at on public.batches;
+create trigger trg_batches_updated_at
+  before update on public.batches
+  for each row execute function public.set_updated_at();
+
+alter table public.batches enable row level security;
+
+drop policy if exists "batches_select" on public.batches;
+create policy "batches_select" on public.batches for select using (auth.role() = ''authenticated'');
+drop policy if exists "batches_insert" on public.batches;
+create policy "batches_insert" on public.batches for insert with check (auth.role() = ''authenticated'');
+drop policy if exists "batches_update" on public.batches;
+create policy "batches_update" on public.batches for update using (auth.role() = ''authenticated'');
+drop policy if exists "batches_delete" on public.batches;
+create policy "batches_delete" on public.batches for delete using (auth.role() = ''authenticated'');
