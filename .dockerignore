@@ -1,0 +1,28 @@
+# Docker build context — exclude heavy/unneeded paths
+node_modules
+packages/*/node_modules
+**/node_modules
+
+# Build outputs (rebuilt inside the container)
+dist
+packages/*/dist
+
+# VCS / OS / editor / logs
+.git
+.gitignore
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Anything not needed for the image build
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+ROADMAP.md
+Dockerfile
+docker-compose.yml
+examples
+assets
