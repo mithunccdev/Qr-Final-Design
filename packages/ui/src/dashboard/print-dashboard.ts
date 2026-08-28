@@ -530,6 +530,13 @@ export class QRPrintDashboard {
                                 <span class="batch-number-value" id="batch-number-display">${this.batchNumber}</span>
                                 <button class="btn btn-outline btn-xs" id="btn-regen-batch" title="Generate new batch number">↻ New</button>
                             </div>
+                            <div class="serial-gen-row">
+                                <div class="serial-gen-field">
+                                    <span class="serial-gen-label">Quantity</span>
+                                    <input type="number" id="print-serial-qty" class="form-input-sm" min="1" max="1000" value="${this.serialQty}" />
+                                </div>
+                                <button class="btn btn-primary btn-xs" id="btn-generate-serials">⚡ Generate Serial Number</button>
+                            </div>
                         </div>
                         ` : ''}
                     </div>
@@ -547,28 +554,6 @@ export class QRPrintDashboard {
                     <!-- TAB CONTENT: BATCH DATA -->
                     <div class="print-tab-content" style="${this.activeTab === 'data' ? '' : 'display:none;'}">
                         <div class="data-manager-header">
-                            <!-- SERIAL GENERATION BAR -->
-                            <div class="serial-gen-bar">
-                                <div class="serial-gen-field">
-                                    <label>Product</label>
-                                    <select id="print-product-select" class="form-select-sm">
-                                        <option value="">Select a product…</option>
-                                        ${this.products.map(p => `
-                                            <option value="${p.id}" ${p.id === this.selectedProductId ? 'selected' : ''}>${p.sku} — ${p.title}</option>
-                                        `).join('')}
-                                    </select>
-                                </div>
-                                <div class="serial-gen-field" style="width:96px;">
-                                    <label>Quantity</label>
-                                    <input type="number" id="print-serial-qty" class="form-input-sm" min="1" max="1000" value="${this.serialQty}" />
-                                </div>
-                                <div class="serial-gen-field" style="flex:1;">
-                                    <label>Batch Number</label>
-                                    <input type="text" id="print-batch-number" class="form-input-sm" value="${this.batchNumber}" placeholder="Auto-generated on generate" readonly />
-                                </div>
-                                <button class="btn btn-primary btn-xs" id="btn-generate-serials">⚡ Generate Serial Number</button>
-                            </div>
-
                             <div class="data-actions-row">
                                 <button class="btn btn-outline btn-xs" id="btn-add-row">+ Add Row</button>
                                 <button class="btn btn-outline btn-xs" id="btn-gen-sample">+ Generate Mock Data</button>
@@ -858,11 +843,6 @@ export class QRPrintDashboard {
         // Add Row
         // Generate serial numbers for the selected product
         q('#btn-generate-serials')?.addEventListener('click', () => { void this.generateSerialsForProduct(); });
-        q<HTMLSelectElement>('#print-product-select')?.addEventListener('change', (e) => {
-            this.selectedProductId = (e.target as HTMLSelectElement).value;
-            this.batchNumber = '';
-            this.render();
-        });
 
         q('#btn-add-row')?.addEventListener('click', () => {            const vars = this.extractVariables();
             const newRow: Record<string, any> = {};

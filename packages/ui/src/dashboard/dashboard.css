@@ -847,6 +847,27 @@
   font-weight: 700;
 }
 
+/* Quantity + Generate Serial row (print product card) */
+.serial-gen-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding-top: 10px;
+  margin-top: 4px;
+}
+.serial-gen-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.serial-gen-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+  white-space: nowrap;
+}
+.serial-gen-field .form-input-sm { width: 84px; }
+
 /* ── Preview stats bar ────────────────────────────────────────────────────── */
 .preview-stats-bar {
   display: flex;
