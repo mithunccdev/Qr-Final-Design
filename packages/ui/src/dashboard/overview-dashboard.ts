@@ -6,7 +6,7 @@ import { EmployeeRecord } from './employee-manager';
 
 export interface OverviewDashboardOptions {
     container: HTMLElement;
-    onNavigate: (mode: 'designer' | 'print' | 'library' | 'products' | 'employees' | 'settings' | 'users') => void;
+    onNavigate: (mode: 'designer' | 'print' | 'library' | 'products' | 'serials' | 'batches' | 'employees' | 'settings' | 'users') => void;
     onSelectTemplate: (template: PrebuiltTemplate, action: 'designer' | 'print') => void;
     userRole?: 'admin' | 'designer' | 'user';
     allowedCategories?: string[];
@@ -14,7 +14,7 @@ export interface OverviewDashboardOptions {
 
 export class OverviewDashboardView {
     private container: HTMLElement;
-    private onNavigate: (mode: 'designer' | 'print' | 'library' | 'products' | 'employees' | 'settings' | 'users') => void;
+    private onNavigate: (mode: 'designer' | 'print' | 'library' | 'products' | 'serials' | 'batches' | 'employees' | 'settings' | 'users') => void;
     private onSelectTemplate: (template: PrebuiltTemplate, action: 'designer' | 'print') => void;
     private userRole: 'admin' | 'designer' | 'user' = 'admin';
     private allowedCategories: string[] = ['All'];

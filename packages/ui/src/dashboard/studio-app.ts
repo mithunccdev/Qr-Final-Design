@@ -5,6 +5,8 @@ import { PREBUILT_TEMPLATES, PrebuiltTemplate } from './templates-data';
 import { QRPrintDashboard } from './print-dashboard';
 import { TemplateLibraryView } from './template-library';
 import { ProductManagerView } from './product-manager';
+import { SerialManagerView } from './serial-manager';
+import { BatchManagerView } from './batch-manager';
 import { EmployeeManagerView } from './employee-manager';
 import { OverviewDashboardView } from './overview-dashboard';
 import { UserManagerView } from './user-manager';
@@ -20,7 +22,7 @@ export interface StudioAppOptions {
     initialMode?: StudioAppMode;
 }
 
-export type StudioAppMode = 'dashboard' | 'designer' | 'print' | 'library' | 'products' | 'employees' | 'settings' | 'users';
+export type StudioAppMode = 'dashboard' | 'designer' | 'print' | 'library' | 'products' | 'serials' | 'batches' | 'employees' | 'settings' | 'users';
 
 export class QRStudioApp {
     private mountElement: HTMLElement;
@@ -35,6 +37,8 @@ export class QRStudioApp {
     private printDashboardInstance: QRPrintDashboard | null = null;
     private libraryInstance: TemplateLibraryView | null = null;
     private productManagerInstance: ProductManagerView | null = null;
+    private serialManagerInstance: SerialManagerView | null = null;
+    private batchManagerInstance: BatchManagerView | null = null;
     private employeeManagerInstance: EmployeeManagerView | null = null;
     private userManagerInstance: UserManagerView | null = null;
 
@@ -43,6 +47,8 @@ export class QRStudioApp {
     private printContainer!: HTMLDivElement;
     private libraryContainer!: HTMLDivElement;
     private productsContainer!: HTMLDivElement;
+    private serialsContainer!: HTMLDivElement;
+    private batchesContainer!: HTMLDivElement;
     private employeesContainer!: HTMLDivElement;
     private settingsContainer!: HTMLDivElement;
     private usersContainer!: HTMLDivElement;
@@ -179,11 +185,25 @@ export class QRStudioApp {
                     <div class="sidebar-nav-group">
                         <div class="nav-group-label">Records</div>
 
-                        <button class="sidebar-nav-item ${this.activeMode === 'products' ? 'active' : ''}" data-mode="products" title="Products & Serial Tracking">
+                        <button class="sidebar-nav-item ${this.activeMode === 'products' ? 'active' : ''}" data-mode="products" title="Products Catalog">
                             <span class="nav-item-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
                             </span>
                             <span class="nav-item-label">Products</span>
+                        </button>
+
+                        <button class="sidebar-nav-item ${this.activeMode === 'serials' ? 'active' : ''}" data-mode="serials" title="Serial Numbers Management">
+                            <span class="nav-item-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></svg>
+                            </span>
+                            <span class="nav-item-label">Serial Numbers</span>
+                        </button>
+
+                        <button class="sidebar-nav-item ${this.activeMode === 'batches' ? 'active' : ''}" data-mode="batches" title="Batch Numbers &amp; Lots">
+                            <span class="nav-item-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="m7 11 4-4-4-4"/><rect width="8" height="8" x="13" y="13" rx="2"/><path d="m17 21 4-4-4-4"/></svg>
+                            </span>
+                            <span class="nav-item-label">Batch Numbers</span>
                         </button>
 
                         <button class="sidebar-nav-item ${this.activeMode === 'employees' ? 'active' : ''}" data-mode="employees" title="Employee Directory">
@@ -280,6 +300,8 @@ export class QRStudioApp {
                     <div class="studio-pane" id="pane-designer" style="display: ${this.activeMode === 'designer' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-print" style="display: ${this.activeMode === 'print' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-products" style="display: ${this.activeMode === 'products' ? 'flex' : 'none'};"></div>
+                    <div class="studio-pane" id="pane-serials" style="display: ${this.activeMode === 'serials' ? 'flex' : 'none'};"></div>
+                    <div class="studio-pane" id="pane-batches" style="display: ${this.activeMode === 'batches' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-employees" style="display: ${this.activeMode === 'employees' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-library" style="display: ${this.activeMode === 'library' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-settings" style="display: ${this.activeMode === 'settings' ? 'flex' : 'none'};"></div>
@@ -293,6 +315,8 @@ export class QRStudioApp {
         this.designerContainer = this.mountElement.querySelector('#pane-designer') as HTMLDivElement;
         this.printContainer = this.mountElement.querySelector('#pane-print') as HTMLDivElement;
         this.productsContainer = this.mountElement.querySelector('#pane-products') as HTMLDivElement;
+        this.serialsContainer = this.mountElement.querySelector('#pane-serials') as HTMLDivElement;
+        this.batchesContainer = this.mountElement.querySelector('#pane-batches') as HTMLDivElement;
         this.employeesContainer = this.mountElement.querySelector('#pane-employees') as HTMLDivElement;
         this.libraryContainer = this.mountElement.querySelector('#pane-library') as HTMLDivElement;
         this.settingsContainer = this.mountElement.querySelector('#pane-settings') as HTMLDivElement;
@@ -303,6 +327,8 @@ export class QRStudioApp {
         this.initLibrary();
         this.initPrintDashboard();
         this.initProductManager();
+        this.initSerialManager();
+        this.initBatchManager();
         this.initEmployeeManager();
         if (isAdmin) {
             this.initSettings();
@@ -407,6 +433,60 @@ export class QRStudioApp {
                     this.initDesigner();
                     this.switchMode('designer');
                 }
+            }
+        });
+    }
+
+    private initSerialManager() {
+        this.serialManagerInstance = new SerialManagerView({
+            container: this.serialsContainer,
+            onPrintSerials: (layout, schema, records) => {
+                this.currentLayout = layout;
+                this.entitySchemas['product'] = schema;
+                if (this.printDashboardInstance) {
+                    this.printDashboardInstance.setLayout(layout);
+                    this.printDashboardInstance.setBatchData(records);
+                }
+                this.switchMode('print');
+            },
+            onOpenInDesigner: (layout, schema) => {
+                if (this.userRole === 'admin' || this.userRole === 'designer') {
+                    this.currentLayout = layout;
+                    this.entitySchemas['product'] = schema;
+                    this.editingTemplateId = null;
+                    this.designerContainer.innerHTML = '';
+                    this.initDesigner();
+                    this.switchMode('designer');
+                }
+            }
+        });
+    }
+
+    private initBatchManager() {
+        this.batchManagerInstance = new BatchManagerView({
+            container: this.batchesContainer,
+            onPrintBatchLabels: (layout, schema, records) => {
+                this.currentLayout = layout;
+                this.entitySchemas['warehouse'] = schema;
+                if (this.printDashboardInstance) {
+                    this.printDashboardInstance.setLayout(layout);
+                    this.printDashboardInstance.setBatchData(records);
+                }
+                this.switchMode('print');
+            },
+            onOpenInDesigner: (layout, schema) => {
+                if (this.userRole === 'admin' || this.userRole === 'designer') {
+                    this.currentLayout = layout;
+                    this.entitySchemas['warehouse'] = schema;
+                    this.editingTemplateId = null;
+                    this.designerContainer.innerHTML = '';
+                    this.initDesigner();
+                    this.switchMode('designer');
+                }
+            },
+            onGenerateSerialsForBatch: (batchNumber, productId) => {
+                this.switchMode('serials');
+                this.serialManagerInstance?.openGenerateModal(productId, batchNumber);
             }
         });
     }
@@ -709,9 +789,13 @@ export class QRStudioApp {
         if (this.designerContainer) this.designerContainer.style.display = mode === 'designer' ? 'flex' : 'none';
         if (this.printContainer) this.printContainer.style.display = mode === 'print' ? 'flex' : 'none';
         if (this.productsContainer) this.productsContainer.style.display = mode === 'products' ? 'flex' : 'none';
+        if (this.serialsContainer) this.serialsContainer.style.display = mode === 'serials' ? 'flex' : 'none';
+        if (this.batchesContainer) this.batchesContainer.style.display = mode === 'batches' ? 'flex' : 'none';
         if (this.employeesContainer) this.employeesContainer.style.display = mode === 'employees' ? 'flex' : 'none';
         if (this.libraryContainer) this.libraryContainer.style.display = mode === 'library' ? 'flex' : 'none';
         if (mode === 'library') this.libraryInstance?.refresh();
+        if (mode === 'serials') this.serialManagerInstance?.refresh();
+        if (mode === 'batches') this.batchManagerInstance?.refresh();
         if (this.settingsContainer) this.settingsContainer.style.display = mode === 'settings' ? 'flex' : 'none';
         if (this.usersContainer) this.usersContainer.style.display = mode === 'users' ? 'flex' : 'none';
 
@@ -740,7 +824,15 @@ export class QRStudioApp {
             },
             products: {
                 title: 'Products',
-                sub: 'Catalog, variables, and serial tracking'
+                sub: 'Catalog, variables, and serial configuration'
+            },
+            serials: {
+                title: 'Serial Numbers',
+                sub: 'Individual tracking codes, QR inspections, and label generator'
+            },
+            batches: {
+                title: 'Batch Numbers',
+                sub: 'Manufacturing lots, production shifts, and master carton tags'
             },
             employees: {
                 title: 'People',
