@@ -1,4 +1,5 @@
 import { supabaseService, UserProfile } from '../supabase';
+import { loadCompanyProfile, logoBadgeHtml } from './branding';
 
 export interface AuthViewOptions {
     container: HTMLElement;
@@ -17,16 +18,19 @@ export class AuthView {
     }
 
     public render() {
+        const brand = loadCompanyProfile();
+        const brandName = brand.brandName || 'QR Studio';
+        const company = brand.companyName || '';
         this.container.innerHTML = `
         <div class="auth-screen-root">
             <aside class="auth-split-brand">
                 <div class="auth-brand-mark">
                     <div class="studio-logo-badge" style="background:#fafafa;color:#18181b;width:36px;height:36px;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
+                        ${brand.logoDataUrl ? logoBadgeHtml(brand.logoDataUrl) : `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>`}
                     </div>
                     <div>
-                        <div class="brand-title" style="color:#fafafa;font-size:0.95rem;">QR Studio</div>
-                        <div class="brand-subtitle" style="color:#a1a1aa;">Kajaria Bathware</div>
+                        <div class="brand-title" style="color:#fafafa;font-size:0.95rem;">${brandName}</div>
+                        <div class="brand-subtitle" style="color:#a1a1aa;">${company}</div>
                     </div>
                 </div>
                 <div class="auth-brand-copy">
@@ -57,7 +61,7 @@ export class AuthView {
                                 type="email" 
                                 id="auth-email" 
                                 class="auth-input" 
-                                placeholder="name@kajariabathware.in" 
+                                placeholder="name@example.com" 
                                 required 
                                 autocomplete="email"
                                 value="mithunaes@gmail.com"

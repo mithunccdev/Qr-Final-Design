@@ -322,3 +322,41 @@ alter table public.employees enable row level security;
 drop policy if exists "employees_all_access" on public.employees;
 create policy "employees_all_access" on public.employees
   for all using (true) with check (true);
+
+
+-- ?? Company branding / white-label profile (single row) ???????????????????????
+-- Stored in the database so the app name, logo and contact details are shared
+-- across every device; localStorage is only an offline cache.
+create table if not exists public.company_profile (
+    id text primary key,
+    company_name text default '',
+    brand_name text default '',
+    address text default '',
+    email text default '',
+    phone text default '',
+    website text default '',
+    logo_data_url text default '',
+    updated_by text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+drop trigger if exists trg_company_profile_updated_at on public.company_profile;
+create trigger trg_company_profile_updated_at
+  before update on public.company_profile
+  for each row execute function public.set_updated_at();
+
+alter table public.company_profile enable row level security;
+
+drop policy if exists "company_profile_select" on public.company_profile;
+create policy "company_profile_select" on public.company_profile
+  for select using (auth.role() = ''authenticated'');
+drop policy if exists "company_profile_insert" on public.company_profile;
+create policy "company_profile_insert" on public.company_profile
+  for insert with check (auth.role() = ''authenticated'');
+drop policy if exists "company_profile_update" on public.company_profile;
+create policy "company_profile_update" on public.company_profile
+  for update using (auth.role() = ''authenticated'');
+drop policy if exists "company_profile_delete" on public.company_profile;
+create policy "company_profile_delete" on public.company_profile
+  for delete using (auth.role() = ''authenticated'');

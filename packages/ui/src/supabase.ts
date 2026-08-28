@@ -3,6 +3,7 @@ import type { ProductRecord, SerializedUnit } from './dashboard/product-manager'
 import type { EmployeeRecord } from './dashboard/employee-manager';
 import type { PrebuiltTemplate } from './dashboard/templates-data';
 import type { MasterDataOption, MasterDataType } from './dashboard/master-data';
+import type { CompanyProfile } from './dashboard/branding';
 
 export type UserRole = 'admin' | 'designer' | 'user';
 
@@ -1047,6 +1048,62 @@ export class SupabaseService {
             const { error } = await this.client.from('master_data').delete().eq('id', `${type}:${code}`);
             return !error;
         } catch (e) {
+            return false;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // COMPANY BRANDING / WHITE-LABEL PROFILE
+    // ════════════════════════════════════════════════════════════════════════════
+    public async fetchCompanyProfile(): Promise<CompanyProfile | null> {
+        if (!this.client || !this.config.enabled) return null;
+        try {
+            const { data, error } = await this.client
+                .from('company_profile')
+                .select('*')
+                .eq('id', 'app')
+                .maybeSingle();
+
+            if (error) {
+                console.warn('Supabase fetchCompanyProfile error:', error.message);
+                return null;
+            }
+            if (!data) return null;
+
+            return {
+                companyName: data.company_name || '',
+                brandName: data.brand_name || '',
+                address: data.address || '',
+                email: data.email || '',
+                phone: data.phone || '',
+                website: data.website || '',
+                logoDataUrl: data.logo_data_url || ''
+            };
+        } catch (e) {
+            console.warn('Supabase fetchCompanyProfile error:', e);
+            return null;
+        }
+    }
+
+    public async saveCompanyProfile(profile: CompanyProfile): Promise<boolean> {
+        if (!this.client || !this.config.enabled) return false;
+        const by = this.currentUserProfile?.email || this.currentUserProfile?.id || null;
+        try {
+            const { error } = await this.client.from('company_profile').upsert({
+                id: 'app',
+                company_name: profile.companyName || '',
+                brand_name: profile.brandName || '',
+                address: profile.address || '',
+                email: profile.email || '',
+                phone: profile.phone || '',
+                website: profile.website || '',
+                logo_data_url: profile.logoDataUrl || '',
+                updated_by: by,
+                updated_at: new Date().toISOString()
+            });
+            return !error;
+        } catch (e: any) {
+            console.warn('Supabase saveCompanyProfile error:', e?.message || e);
             return false;
         }
     }

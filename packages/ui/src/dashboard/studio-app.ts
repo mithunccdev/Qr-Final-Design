@@ -12,6 +12,8 @@ import { OverviewDashboardView } from './overview-dashboard';
 import { UserManagerView } from './user-manager';
 import { MasterDataManagerView } from './master-data-manager';
 import { mergeMasterDataFromDb } from './master-data';
+import { BrandingManagerView } from './branding-manager';
+import { loadCompanyProfile, logoBadgeHtml, CompanyProfile } from './branding';
 import { AuthView } from './auth-view';
 import { supabaseService, UserProfile, UserRole } from '../supabase';
 
@@ -113,6 +115,9 @@ export class QRStudioApp {
         }
 
         const userInitials = this.currentUser?.fullName ? this.currentUser.fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'U';
+        const brand = loadCompanyProfile();
+        const brandTitle = brand.brandName || 'QR Studio';
+        const brandSub = brand.companyName || '';
 
         this.mountElement.innerHTML = `
         <div class="studio-app-root sidebar-layout-active">
@@ -124,11 +129,11 @@ export class QRStudioApp {
                 <div class="sidebar-brand-header">
                     <div class="sidebar-brand-left">
                         <div class="studio-logo-badge">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
+                            ${brand.logoDataUrl ? logoBadgeHtml(brand.logoDataUrl) : `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>`}
                         </div>
                         <div class="brand-text sidebar-brand-text">
-                            <span class="brand-title">QR Studio</span>
-                            <span class="brand-subtitle">Kajaria</span>
+                            <span class="brand-title">${brandTitle}</span>
+                            <span class="brand-subtitle">${brandSub}</span>
                         </div>
                     </div>
                     <button class="btn-sidebar-toggle" id="btn-sidebar-toggle" title="Collapse / Expand Sidebar">
@@ -340,6 +345,36 @@ export class QRStudioApp {
 
         // Sync shared master data (plants, categories, colors, variables...) from DB
         void supabaseService.fetchMasterData().then(list => { if (list) mergeMasterDataFromDb(list); });
+
+        // Sync company branding from DB
+        this.applyBranding();
+        void supabaseService.fetchCompanyProfile().then(p => {
+            if (p) { this.brandingProfile = p; this.applyBranding(false); }
+        });
+        window.addEventListener('qr-branding-updated', () => this.applyBranding());
+    }
+
+    private brandingProfile: CompanyProfile | null = null;
+
+    /** Apply the white-label brand to the document title + sidebar chrome. */
+    private applyBranding(fromLocal = true) {
+        const brand = fromLocal ? loadCompanyProfile() : (this.brandingProfile || loadCompanyProfile());
+        const name = brand.brandName || 'QR Studio';
+        document.title = name;
+
+        const titleEl = this.mountElement.querySelector<HTMLElement>('.brand-title');
+        const subEl = this.mountElement.querySelector<HTMLElement>('.brand-subtitle');
+        if (titleEl) titleEl.textContent = name;
+        if (subEl) subEl.textContent = brand.companyName || '';
+
+        const badge = this.mountElement.querySelector<HTMLElement>('.studio-logo-badge');
+        if (badge) {
+            if (brand.logoDataUrl) {
+                badge.innerHTML = logoBadgeHtml(brand.logoDataUrl);
+            } else {
+                badge.querySelector('img')?.remove();
+            }
+        }
     }
 
     private getAvatarGradient(role: UserRole): string {
@@ -553,9 +588,11 @@ export class QRStudioApp {
             <div class="settings-sub-nav">
                 <button class="settings-sub-tab active" data-sub="api">🔌 API</button>
                 <button class="settings-sub-tab" data-sub="master">🗃️ Master Data</button>
+                <button class="settings-sub-tab" data-sub="branding">🏷️ Company</button>
             </div>
             <div id="settings-page-api" style="display:block;"></div>
             <div id="settings-page-master" style="display:none;"></div>
+            <div id="settings-page-branding" style="display:none;"></div>
         </div>`;
 
         this.settingsContainer.querySelectorAll<HTMLButtonElement>('.settings-sub-tab').forEach(btn => {
@@ -564,13 +601,17 @@ export class QRStudioApp {
                 this.settingsContainer.querySelectorAll('.settings-sub-tab').forEach(b => b.classList.toggle('active', b === btn));
                 const api = this.settingsContainer.querySelector('#settings-page-api') as HTMLElement;
                 const master = this.settingsContainer.querySelector('#settings-page-master') as HTMLElement;
+                const branding = this.settingsContainer.querySelector('#settings-page-branding') as HTMLElement;
                 if (api) api.style.display = sub === 'api' ? 'block' : 'none';
                 if (master) master.style.display = sub === 'master' ? 'block' : 'none';
+                if (branding) branding.style.display = sub === 'branding' ? 'block' : 'none';
             });
         });
 
         const masterHost = this.settingsContainer.querySelector('#settings-page-master') as HTMLElement;
         if (masterHost) new MasterDataManagerView(masterHost);
+        const brandingHost = this.settingsContainer.querySelector('#settings-page-branding') as HTMLElement;
+        if (brandingHost) new BrandingManagerView(brandingHost);
 
         this.renderSettingsApiPage();
     }
