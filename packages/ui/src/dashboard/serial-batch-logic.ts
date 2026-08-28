@@ -329,6 +329,14 @@ export function resolvePlantCode(plant: string, forBatch = false): string {
     return match.serialCode || match.code;
 }
 
+export function resolveVendorCode(vendor = 'V1', forBatch = false): string {
+    const vendors = getMasterData('vendor');
+    const match = vendors.find(v => v.code.toUpperCase() === vendor.toUpperCase() || v.label.toUpperCase().includes(vendor.toUpperCase()));
+    if (!match) return vendor.toUpperCase();
+    if (forBatch) return match.batchCode || match.code;
+    return match.serialCode || match.code;
+}
+
 export function resolveFinancialYearCode(date = new Date(), forBatch = false): string {
     const year = date.getFullYear();
     const month = date.getMonth() + 1; // 1-12
@@ -373,6 +381,67 @@ export function resolveGroupCode(group: string, forBatch = false): string {
         return forBatch ? (match.batchCode || match.code.slice(0, 3).toUpperCase()) : (match.serialCode || match.code.slice(0, 2).toUpperCase());
     }
     return group.slice(0, 2).toUpperCase();
+}
+
+export function resolveColorCode(color = 'CP', forBatch = false): string {
+    if (!color) return 'CP';
+    const colors = getMasterData('color');
+    const match = colors.find(c => c.code.toLowerCase() === color.toLowerCase() || c.label.toLowerCase().includes(color.toLowerCase()));
+    if (match) {
+        return forBatch ? (match.batchCode || match.code) : (match.serialCode || match.code);
+    }
+    return color.toUpperCase();
+}
+
+export interface MasterCodeResolutionSummary {
+    plant: { code: string; masterTab: 'plant'; label: string };
+    financialYear: { code: string; masterTab: 'financial_year'; label: string };
+    month: { code: string; masterTab: 'month'; label: string };
+    category: { code: string; masterTab: 'category'; label: string };
+    group: { code: string; masterTab: 'group'; label: string };
+    vendor: { code: string; masterTab: 'vendor'; label: string };
+    color: { code: string; masterTab: 'color'; label: string };
+}
+
+export function getMasterCodesMapping(plant = 'KSPL', forBatch = false): MasterCodeResolutionSummary {
+    const now = new Date();
+    return {
+        plant: {
+            code: resolvePlantCode(plant, forBatch),
+            masterTab: 'plant',
+            label: `Plant Master (${plant})`
+        },
+        financialYear: {
+            code: resolveFinancialYearCode(now, forBatch),
+            masterTab: 'financial_year',
+            label: 'Financial Year Master'
+        },
+        month: {
+            code: resolveMonthCode(now, forBatch),
+            masterTab: 'month',
+            label: 'Month Master'
+        },
+        category: {
+            code: resolveCategoryCode('faucet', forBatch),
+            masterTab: 'category',
+            label: 'Category Master'
+        },
+        group: {
+            code: resolveGroupCode('mixer', forBatch),
+            masterTab: 'group',
+            label: 'Product Group Master'
+        },
+        vendor: {
+            code: resolveVendorCode('V1', forBatch),
+            masterTab: 'vendor',
+            label: 'Vendor Master'
+        },
+        color: {
+            code: resolveColorCode('CP', forBatch),
+            masterTab: 'color',
+            label: 'Color Master'
+        }
+    };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

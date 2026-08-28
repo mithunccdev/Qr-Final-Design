@@ -18,6 +18,7 @@ import {
     getBatchLogicRule,
     generateSerialNumberPreview,
     generateBatchNumberPreview,
+    getMasterCodesMapping,
     DEFAULT_SERIAL_RULES,
     DEFAULT_BATCH_RULES
 } from './serial-batch-logic';
@@ -249,7 +250,9 @@ export class MasterDataManagerView {
     private renderSerialLogicPage() {
         const rule = getSerialLogicRule(this.selectedPlantForRule);
         const plants = getMasterData('plant');
-        const preview = generateSerialNumberPreview(rule, { plant: this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL' });
+        const targetPlant = this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL';
+        const preview = generateSerialNumberPreview(rule, { plant: targetPlant });
+        const mapping = getMasterCodesMapping(targetPlant, false);
 
         this.container.innerHTML = `
         <div class="entity-manager-root">
@@ -261,15 +264,23 @@ export class MasterDataManagerView {
                 `).join('')}
             </div>
 
-            <div class="manager-card-panel" style="max-width: 960px; margin: 0 auto; width: 100%;">
+            <div class="manager-card-panel" style="max-width: 980px; margin: 0 auto; width: 100%;">
                 <div class="panel-header-row" style="align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
                     <div>
                         <h2 class="panel-heading">🔢 Serial Number Logic &amp; Rule Builder</h2>
-                        <p class="panel-subheading">Configure how serial numbers are constructed, which master codes to include, digit length/padding, starting sequence, and per-plant rules.</p>
+                        <p class="panel-subheading">Configure serialization format, active master code inclusions, sequence length/padding, and per-plant rules.</p>
                     </div>
                     <div style="display: flex; gap: 8px;">
                         <button class="btn btn-outline" id="btn-reset-serial-logic">🔄 Reset Defaults</button>
                         <button class="btn btn-primary" id="btn-save-serial-logic">💾 Save Serial Logic</button>
+                    </div>
+                </div>
+
+                <!-- INTEGRATION CALLOUT BANNER -->
+                <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 8px; padding: 12px 16px; margin-top: 14px; display: flex; align-items: flex-start; gap: 10px;">
+                    <span style="font-size: 1.25rem;">🔗</span>
+                    <div style="font-size: 0.8125rem; color: var(--text-primary); line-height: 1.4;">
+                        <strong>Connected to Master Tables:</strong> All codes used in serial number generation are managed separately in their respective master pages (Plants, Financial Years, Months, Categories, etc.). Any change made in those master pages is automatically reflected here in real time.
                     </div>
                 </div>
 
@@ -327,77 +338,154 @@ export class MasterDataManagerView {
 
                     <!-- CODE INCLUSIONS & SEGMENTS -->
                     <div class="settings-section-card" style="padding: 16px;">
-                        <h3 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 12px 0; color: var(--text-primary);">
-                            🧩 Code Segment Inclusions (Check which codes to include in the Serial Number)
-                        </h3>
-                        <p style="font-size: 0.8125rem; color: var(--text-secondary); margin: 0 0 16px 0;">
-                            Codes are dynamically pulled from their respective Master Tables (Plants, FY, Months, Categories, Groups).
-                        </p>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                            <h3 style="font-size: 0.9375rem; font-weight: 700; margin: 0; color: var(--text-primary);">
+                                🧩 Master Code Segment Inclusions
+                            </h3>
+                            <span style="font-size: 0.75rem; color: var(--text-secondary);">
+                                Active values pulled directly from Master pages
+                            </span>
+                        </div>
 
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-sl-plant" ${rule.inclusions.includePlant ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Plant Serial Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Plant Master (e.g. KSPL ➔ K)</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                            <!-- Plant Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-sl-plant" ${rule.inclusions.includePlant ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Plant Serial Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-emerald" style="font-family: monospace; font-weight: 700;">${mapping.plant.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="plant" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in Plants Master ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-sl-fy" ${rule.inclusions.includeFinancialYear ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Financial Year Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From FY Master (e.g. 2026-27 ➔ 26)</div>
+                            <!-- FY Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-sl-fy" ${rule.inclusions.includeFinancialYear ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Financial Year Serial Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-indigo" style="font-family: monospace; font-weight: 700;">${mapping.financialYear.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="financial_year" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in FY Master ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-sl-month" ${rule.inclusions.includeMonth ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Calendar Month Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Month Master (e.g. August ➔ 08)</div>
+                            <!-- Month Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-sl-month" ${rule.inclusions.includeMonth ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Month Serial Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-cyan" style="font-family: monospace; font-weight: 700;">${mapping.month.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="month" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in Months Master ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-sl-category" ${rule.inclusions.includeCategory ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Product Category Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Category Master (e.g. Faucets ➔ FC)</div>
+                            <!-- Category Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-sl-category" ${rule.inclusions.includeCategory ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Category Serial Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-emerald" style="font-family: monospace; font-weight: 700;">${mapping.category.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="category" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in Categories ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-sl-group" ${rule.inclusions.includeGroup ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Product Group Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Group Master (e.g. Mixers ➔ MX)</div>
+                            <!-- Group Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-sl-group" ${rule.inclusions.includeGroup ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Group Serial Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-emerald" style="font-family: monospace; font-weight: 700;">${mapping.group.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="group" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in Groups ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-sl-sku" ${rule.inclusions.includeSku ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Product SKU Segment</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">Short alphanumeric code from SKU</div>
+                            <!-- Vendor Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-sl-vendor" ${rule.inclusions.includeVendor ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Vendor Serial Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-neutral" style="font-family: monospace; font-weight: 700;">${mapping.vendor.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="vendor" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in Vendors ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-sl-color" ${rule.inclusions.includeColor ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Color / Finish Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Color Master (e.g. Chrome ➔ CP)</div>
+                            <!-- Color / Finish Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-sl-color" ${rule.inclusions.includeColor ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Color / Finish Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-amber" style="font-family: monospace; font-weight: 700;">${mapping.color.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="color" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in Colors ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-sl-vendor" ${rule.inclusions.includeVendor ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Vendor Serial Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Vendor Master (e.g. V1 / V2)</div>
-                                </div>
-                            </label>
+                            <!-- SKU Segment -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-sl-sku" ${rule.inclusions.includeSku ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Product SKU Segment</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Alphanumeric suffix from Product SKU
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
                         </div>
 
                         <!-- CUSTOM STATIC PREFIX / SUFFIX -->
@@ -505,6 +593,20 @@ export class MasterDataManagerView {
             });
         });
 
+        // Quick Jump to Master Page
+        this.container.querySelectorAll<HTMLButtonElement>('.btn-jump-master').forEach(b => {
+            b.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const tab = b.dataset.tab as MasterDataType;
+                if (tab) {
+                    this.activeType = tab;
+                    this.view = 'list';
+                    this.render();
+                }
+            });
+        });
+
         // Live preview updater on input change
         const updateLivePreview = () => {
             const currentRule: SerialNumberLogicRule = {
@@ -601,7 +703,9 @@ export class MasterDataManagerView {
     private renderBatchLogicPage() {
         const rule = getBatchLogicRule(this.selectedPlantForRule);
         const plants = getMasterData('plant');
-        const preview = generateBatchNumberPreview(rule, { plant: this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL' });
+        const targetPlant = this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL';
+        const preview = generateBatchNumberPreview(rule, { plant: targetPlant });
+        const mapping = getMasterCodesMapping(targetPlant, true);
 
         this.container.innerHTML = `
         <div class="entity-manager-root">
@@ -613,7 +717,7 @@ export class MasterDataManagerView {
                 `).join('')}
             </div>
 
-            <div class="manager-card-panel" style="max-width: 960px; margin: 0 auto; width: 100%;">
+            <div class="manager-card-panel" style="max-width: 980px; margin: 0 auto; width: 100%;">
                 <div class="panel-header-row" style="align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
                     <div>
                         <h2 class="panel-heading">📦 Batch Number Logic &amp; Rule Builder</h2>
@@ -622,6 +726,14 @@ export class MasterDataManagerView {
                     <div style="display: flex; gap: 8px;">
                         <button class="btn btn-outline" id="btn-reset-batch-logic">🔄 Reset Defaults</button>
                         <button class="btn btn-primary" id="btn-save-batch-logic">💾 Save Batch Logic</button>
+                    </div>
+                </div>
+
+                <!-- INTEGRATION CALLOUT BANNER -->
+                <div style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 8px; padding: 12px 16px; margin-top: 14px; display: flex; align-items: flex-start; gap: 10px;">
+                    <span style="font-size: 1.25rem;">🔗</span>
+                    <div style="font-size: 0.8125rem; color: var(--text-primary); line-height: 1.4;">
+                        <strong>Connected to Master Tables:</strong> All batch codes used in lot number generation are managed separately in their respective master pages (Plants, Financial Years, Months, Categories, etc.). Any change made in those master pages is automatically reflected here in real time.
                     </div>
                 </div>
 
@@ -678,58 +790,113 @@ export class MasterDataManagerView {
 
                     <!-- CODE INCLUSIONS -->
                     <div class="settings-section-card" style="padding: 16px;">
-                        <h3 style="font-size: 0.9375rem; font-weight: 700; margin: 0 0 12px 0; color: var(--text-primary);">
-                            🧩 Code Segment Inclusions (Check which codes to include in Batch Number)
-                        </h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                            <h3 style="font-size: 0.9375rem; font-weight: 700; margin: 0; color: var(--text-primary);">
+                                🧩 Master Code Segment Inclusions (Batch Number)
+                            </h3>
+                            <span style="font-size: 0.75rem; color: var(--text-secondary);">
+                                Active batch codes pulled directly from Master pages
+                            </span>
+                        </div>
 
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-bl-prefix" ${rule.inclusions.includeCustomPrefix ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Prefix Tag (BAT / LOT)</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">e.g. BAT or LOT</div>
-                                </div>
-                            </label>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+                            <!-- Prefix -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-bl-prefix" ${rule.inclusions.includeCustomPrefix ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Prefix Tag (BAT / LOT)</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Static Tag: <span class="nav-item-badge badge-neutral" style="font-family: monospace; font-weight: 700;">${rule.customPrefix || 'BAT'}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-bl-plant" ${rule.inclusions.includePlant ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Plant Batch Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Plant Master (e.g. KS / KG / KB)</div>
+                            <!-- Plant Batch Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-bl-plant" ${rule.inclusions.includePlant ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Plant Batch Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-cyan" style="font-family: monospace; font-weight: 700;">${mapping.plant.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="plant" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in Plants Master ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-bl-fy" ${rule.inclusions.includeFinancialYear ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Financial Year Batch Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From FY Master (e.g. F26)</div>
+                            <!-- FY Batch Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-bl-fy" ${rule.inclusions.includeFinancialYear ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Financial Year Batch Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-indigo" style="font-family: monospace; font-weight: 700;">${mapping.financialYear.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="financial_year" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in FY Master ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-bl-month" ${rule.inclusions.includeMonth ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Month Batch Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Month Master (e.g. M08)</div>
+                            <!-- Month Batch Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-bl-month" ${rule.inclusions.includeMonth ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Month Batch Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-cyan" style="font-family: monospace; font-weight: 700;">${mapping.month.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="month" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in Months Master ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-bl-category" ${rule.inclusions.includeCategory ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Category Batch Code</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">From Category Master (e.g. BFC)</div>
+                            <!-- Category Batch Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-bl-category" ${rule.inclusions.includeCategory ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Category Batch Code</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Active: <span class="nav-item-badge badge-emerald" style="font-family: monospace; font-weight: 700;">${mapping.category.code}</span>
+                                        </div>
+                                    </div>
+                                </label>
+                                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); text-align: right;">
+                                    <button class="btn btn-sm btn-outline btn-jump-master" data-tab="category" style="font-size: 0.72rem; padding: 2px 6px;">
+                                        ⚙️ Manage in Categories ➔
+                                    </button>
                                 </div>
-                            </label>
+                            </div>
 
-                            <label class="checkbox-label-card" style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;">
-                                <input type="checkbox" id="inc-bl-shift" ${rule.inclusions.includeShift ? 'checked' : ''} style="margin-top: 3px;" />
-                                <div>
-                                    <div style="font-weight: 700; font-size: 0.8125rem;">Shift Identifier</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-secondary);">e.g. A / B / C</div>
-                                </div>
-                            </label>
+                            <!-- Shift Code -->
+                            <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
+                                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                    <input type="checkbox" id="inc-bl-shift" ${rule.inclusions.includeShift ? 'checked' : ''} style="margin-top: 3px;" />
+                                    <div>
+                                        <div style="font-weight: 700; font-size: 0.8125rem;">Production Shift Identifier</div>
+                                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Shift Tag: <span class="nav-item-badge badge-amber" style="font-family: monospace; font-weight: 700;">A / B / C</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
                         </div>
 
                         <div class="form-group" style="margin-top: 14px; max-width: 320px;">
@@ -808,6 +975,20 @@ export class MasterDataManagerView {
             b.addEventListener('click', () => {
                 this.selectedPlantForRule = b.dataset.plant || 'ALL';
                 this.render();
+            });
+        });
+
+        // Quick Jump to Master Page
+        this.container.querySelectorAll<HTMLButtonElement>('.btn-jump-master').forEach(b => {
+            b.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const tab = b.dataset.tab as MasterDataType;
+                if (tab) {
+                    this.activeType = tab;
+                    this.view = 'list';
+                    this.render();
+                }
             });
         });
 
