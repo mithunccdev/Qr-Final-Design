@@ -54,6 +54,8 @@ export interface SerialNumberLogicRule {
         includeSku: boolean;
         includeColor: boolean;
     };
+    /** Individual zero-pad width per master-code segment (falls back to sequencePadding). */
+    segmentPadding?: Partial<Record<SerialSegmentType, number>>;
     segmentOrder: SerialSegmentType[];
     updatedAt: string;
 }
@@ -80,6 +82,8 @@ export interface BatchNumberLogicRule {
         includeGroup: boolean;
         includeShift: boolean;
     };
+    /** Individual zero-pad width per master-code segment (falls back to sequencePadding). */
+    segmentPadding?: Partial<Record<BatchSegmentType, number>>;
     segmentOrder: BatchSegmentType[];
     updatedAt: string;
 }
@@ -471,19 +475,22 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
     const seq = ctx.sequence !== undefined ? ctx.sequence : rule.sequenceStartNumber;
     const prod = ctx.product || { sku: 'FAUC-KS-01', category: 'faucet', group: 'mixer', color: 'CP' };
 
-    const pad = (v: string | number | undefined): string => String(v ?? '').padStart(rule.sequencePadding, '0');
+    const padFor = (key: SerialSegmentType, value: string | number | undefined): string => {
+        const width = rule.segmentPadding?.[key] ?? rule.sequencePadding;
+        return String(value ?? '').padStart(width, '0');
+    };
 
     const segmentValues: Record<SerialSegmentType, string> = {
         custom_prefix: rule.customPrefix || '',
-        plant: pad(resolvePlantCode(plant, false)),
-        vendor: pad('V1'),
-        financial_year: pad(resolveFinancialYearCode(date, false)),
-        month: pad(resolveMonthCode(date, false)),
-        category: pad(resolveCategoryCode(prod.category || 'faucet', false)),
-        group: pad(resolveGroupCode(prod.group || 'mixer', false)),
-        sku: pad(prod.sku ? prod.sku.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase() : '0001'),
-        color: pad(prod.color || ctx.color || 'CP'),
-        sequence: pad(seq)
+        plant: padFor('plant', resolvePlantCode(plant, false)),
+        vendor: padFor('vendor', 'V1'),
+        financial_year: padFor('financial_year', resolveFinancialYearCode(date, false)),
+        month: padFor('month', resolveMonthCode(date, false)),
+        category: padFor('category', resolveCategoryCode(prod.category || 'faucet', false)),
+        group: padFor('group', resolveGroupCode(prod.group || 'mixer', false)),
+        sku: padFor('sku', prod.sku ? prod.sku.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase() : '0001'),
+        color: padFor('color', prod.color || ctx.color || 'CP'),
+        sequence: padFor('sequence', seq)
     };
 
     const activeParts: string[] = [];
@@ -539,18 +546,21 @@ export function generateBatchNumberPreview(rule: BatchNumberLogicRule, ctx: Batc
     const seq = ctx.sequence !== undefined ? ctx.sequence : rule.sequenceStartNumber;
     const prod = ctx.product || { category: 'faucet', group: 'mixer' };
 
-    const pad = (v: string | number | undefined): string => String(v ?? '').padStart(rule.sequencePadding, '0');
+    const padFor = (key: BatchSegmentType, value: string | number | undefined): string => {
+        const width = rule.segmentPadding?.[key] ?? rule.sequencePadding;
+        return String(value ?? '').padStart(width, '0');
+    };
 
     const segmentValues: Record<BatchSegmentType, string> = {
         custom_prefix: rule.customPrefix || 'BAT',
-        plant: pad(resolvePlantCode(plant, true)),
-        vendor: pad('VB1'),
-        financial_year: pad(resolveFinancialYearCode(date, true)),
-        month: pad(resolveMonthCode(date, true)),
-        category: pad(resolveCategoryCode(prod.category || 'faucet', true)),
-        group: pad(resolveGroupCode(prod.group || 'mixer', true)),
+        plant: padFor('plant', resolvePlantCode(plant, true)),
+        vendor: padFor('vendor', 'VB1'),
+        financial_year: padFor('financial_year', resolveFinancialYearCode(date, true)),
+        month: padFor('month', resolveMonthCode(date, true)),
+        category: padFor('category', resolveCategoryCode(prod.category || 'faucet', true)),
+        group: padFor('group', resolveGroupCode(prod.group || 'mixer', true)),
         shift: (ctx.shift || 'A').slice(-1),
-        sequence: pad(seq)
+        sequence: padFor('sequence', seq)
     };
 
     const activeParts: string[] = [];
