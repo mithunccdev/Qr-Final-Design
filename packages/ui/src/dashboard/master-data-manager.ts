@@ -37,6 +37,7 @@ export class MasterDataManagerView {
     private view: ViewMode = 'list';
     private editingCode: string | null = null;
     private selectedPlantForRule = 'ALL';
+    private searchQuery = '';
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -134,6 +135,14 @@ export class MasterDataManagerView {
         const hasSerialBatch = this.supportsSerialAndBatchCode();
         const hasPlantCode = this.isPlant() || this.isVendor();
 
+        const q = this.searchQuery.trim().toLowerCase();
+        const filtered = q
+            ? records.filter(r =>
+                String(r.code || '').toLowerCase().includes(q) ||
+                String(r.label || '').toLowerCase().includes(q)
+              )
+            : records;
+
         let colCount = 3; // ID, Label, Actions
         if (hasPlantCode) colCount += 1;
         if (this.isFinancialYear()) colCount += 1;
@@ -157,11 +166,19 @@ export class MasterDataManagerView {
                         <p class="panel-subheading">${esc(this.getSubheading())}</p>
                     </div>
                     <button class="btn btn-primary" id="btn-add-master-entry">
-                        ➕ Add ${def.label.replace(/s$/, '')}
+                        ➕ Add ${esc(def.label.replace(/s$/, ''))}
                     </button>
                 </div>
 
-                <div class="manager-table-wrapper" style="margin-top:16px;">
+                <div class="manager-toolbar">
+                    <div class="search-input-wrapper">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                        <input type="text" id="master-search" placeholder="Search by code or label…" value="${esc(this.searchQuery)}" />
+                    </div>
+                    <span class="toolbar-count">${filtered.length} of ${records.length} ${esc(def.label.toLowerCase())}</span>
+                </div>
+
+                <div class="manager-table-wrapper" style="margin-top:0;">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -175,13 +192,17 @@ export class MasterDataManagerView {
                             </tr>
                         </thead>
                         <tbody>
-                            ${records.length === 0 ? `
+                            ${filtered.length === 0 ? `
                                 <tr>
-                                    <td colspan="${colCount}" style="text-align:center;padding:32px;color:var(--text-secondary);">
-                                        No ${def.label.toLowerCase()} defined yet. Click "Add" above to create one.
+                                    <td colspan="${colCount}">
+                                        <div class="master-empty-state">
+                                            <div class="empty-icon">🗂️</div>
+                                            <div class="empty-title">No ${esc(def.label.toLowerCase())} found</div>
+                                            <div class="empty-sub">${q ? 'Try a different search term.' : `Click "Add ${esc(def.label.replace(/s$/, ''))}" above to create one.`}</div>
+                                        </div>
                                     </td>
                                 </tr>
-                            ` : records.map(r => `
+                            ` : filtered.map(r => `
                                 <tr>
                                     <td><span class="code-badge-pill" style="font-weight:700;font-family:monospace;">${esc(r.code)}</span></td>
                                     <td style="font-weight:600;">${esc(r.label)}</td>
@@ -192,14 +213,14 @@ export class MasterDataManagerView {
                                             ${r.serialCode ? `<span class="nav-item-badge badge-emerald" style="font-family:monospace;font-weight:700;">${esc(r.serialCode)}</span>` : '<span style="color:var(--text-secondary);font-size:0.75rem;">—</span>'}
                                         </td>
                                         <td>
-                                            ${r.batchCode ? `<span class="nav-item-badge badge-cyan" style="font-family:monospace;font-weight:700;">${r.batchCode}</span>` : '<span style="color:var(--text-secondary);font-size:0.75rem;">—</span>'}
+                                            ${r.batchCode ? `<span class="nav-item-badge badge-cyan" style="font-family:monospace;font-weight:700;">${esc(r.batchCode)}</span>` : '<span style="color:var(--text-secondary);font-size:0.75rem;">—</span>'}
                                         </td>
                                     ` : ''}
-                                    ${this.isVariable() ? `<td style="font-family:monospace;color:var(--text-secondary);">${r.defaultValue || '—'}</td>` : ''}
+                                    ${this.isVariable() ? `<td style="font-family:monospace;color:var(--text-secondary);">${esc(r.defaultValue || '—')}</td>` : ''}
                                     <td style="text-align:right;">
                                         <div style="display:flex;gap:6px;justify-content:flex-end;">
-                                            <button class="btn btn-sm btn-outline" data-action="edit" data-code="${r.code}" title="Edit">✏️</button>
-                                            <button class="btn btn-sm btn-outline" data-action="delete" data-code="${r.code}" title="Delete" style="color:#ef4444;border-color:#fee2e2;">🗑️</button>
+                                            <button class="btn btn-sm btn-outline" data-action="edit" data-code="${esc(r.code)}" title="Edit">✏️</button>
+                                            <button class="btn btn-sm btn-outline" data-action="delete" data-code="${esc(r.code)}" title="Delete" style="color:#ef4444;border-color:#fee2e2;">🗑️</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -220,10 +241,26 @@ export class MasterDataManagerView {
                 if (t && t !== this.activeType) {
                     this.activeType = t;
                     this.view = 'list';
+                    this.searchQuery = '';
                     this.render();
                 }
             });
         });
+
+        const search = this.container.querySelector<HTMLInputElement>('#master-search');
+        if (search) {
+            search.addEventListener('input', (e) => {
+                this.searchQuery = (e.target as HTMLInputElement).value;
+                // Re-render, then restore focus & caret so typing feels seamless
+                const pos = search.selectionStart ?? this.searchQuery.length;
+                this.render();
+                const next = this.container.querySelector<HTMLInputElement>('#master-search');
+                if (next) {
+                    next.focus();
+                    try { next.setSelectionRange(pos, pos); } catch { /* ignore */ }
+                }
+            });
+        }
 
         this.container.querySelector('#btn-add-master-entry')?.addEventListener('click', () => {
             this.view = 'create';
