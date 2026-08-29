@@ -343,8 +343,15 @@ export function resolvePlantCode(plant: string, forBatch = false): string {
 
 export function resolveVendorCode(vendor = 'V1', forBatch = false): string {
     const vendors = getMasterData('vendor');
-    const match = vendors.find(v => v.code.toUpperCase() === vendor.toUpperCase() || v.label.toUpperCase().includes(vendor.toUpperCase()));
-    if (!match) return vendor.toUpperCase();
+    const key = String(vendor || '').toUpperCase();
+    // Match by code, by configured serial/batch code, OR by label/name.
+    const match = vendors.find(v =>
+        String(v.code || '').toUpperCase() === key ||
+        String(v.serialCode || '').toUpperCase() === key ||
+        String(v.batchCode || '').toUpperCase() === key ||
+        String(v.label || '').toUpperCase().includes(key)
+    );
+    if (!match) return key || vendor;
     if (forBatch) return match.batchCode || match.code;
     return match.serialCode || match.code;
 }
@@ -483,7 +490,7 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
     const segmentValues: Record<SerialSegmentType, string> = {
         custom_prefix: rule.customPrefix || '',
         plant: padFor('plant', resolvePlantCode(plant, false)),
-        vendor: padFor('vendor', 'V1'),
+        vendor: padFor('vendor', resolveVendorCode(ctx.vendor ?? 'V1', false)),
         financial_year: padFor('financial_year', resolveFinancialYearCode(date, false)),
         month: padFor('month', resolveMonthCode(date, false)),
         category: padFor('category', resolveCategoryCode(prod.category || 'faucet', false)),
@@ -493,32 +500,30 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
         sequence: padFor('sequence', seq)
     };
 
-    const activeParts: string[] = [];
-    for (const seg of rule.segmentOrder) {
-        if (seg === 'sequence') {
-            activeParts.push(segmentValues.sequence);
-            continue;
+    const included = (seg: SerialSegmentType): boolean => {
+        switch (seg) {
+            case 'sequence': return true;
+            case 'custom_prefix': return rule.inclusions.includeCustomPrefix && !!segmentValues.custom_prefix;
+            case 'plant': return rule.inclusions.includePlant && !!segmentValues.plant;
+            case 'vendor': return rule.inclusions.includeVendor && !!segmentValues.vendor;
+            case 'financial_year': return rule.inclusions.includeFinancialYear && !!segmentValues.financial_year;
+            case 'month': return rule.inclusions.includeMonth && !!segmentValues.month;
+            case 'category': return rule.inclusions.includeCategory && !!segmentValues.category;
+            case 'group': return rule.inclusions.includeGroup && !!segmentValues.group;
+            case 'sku': return rule.inclusions.includeSku && !!segmentValues.sku;
+            case 'color': return rule.inclusions.includeColor && !!segmentValues.color;
+            default: return false;
         }
-        if (seg === 'custom_prefix' && rule.inclusions.includeCustomPrefix && segmentValues.custom_prefix) {
-            activeParts.push(segmentValues.custom_prefix);
-        } else if (seg === 'plant' && rule.inclusions.includePlant && segmentValues.plant) {
-            activeParts.push(segmentValues.plant);
-        } else if (seg === 'vendor' && rule.inclusions.includeVendor && segmentValues.vendor) {
-            activeParts.push(segmentValues.vendor);
-        } else if (seg === 'financial_year' && rule.inclusions.includeFinancialYear && segmentValues.financial_year) {
-            activeParts.push(segmentValues.financial_year);
-        } else if (seg === 'month' && rule.inclusions.includeMonth && segmentValues.month) {
-            activeParts.push(segmentValues.month);
-        } else if (seg === 'category' && rule.inclusions.includeCategory && segmentValues.category) {
-            activeParts.push(segmentValues.category);
-        } else if (seg === 'group' && rule.inclusions.includeGroup && segmentValues.group) {
-            activeParts.push(segmentValues.group);
-        } else if (seg === 'sku' && rule.inclusions.includeSku && segmentValues.sku) {
-            activeParts.push(segmentValues.sku);
-        } else if (seg === 'color' && rule.inclusions.includeColor && segmentValues.color) {
-            activeParts.push(segmentValues.color);
-        }
-    }
+    };
+
+    // Order = the user's configured segmentOrder (re-ordered in the UI), then any
+    // other checked/master segment is auto-appended so it always appears in the serial.
+    const SERIAL_PRIORITY: SerialSegmentType[] = ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'category', 'group', 'sku', 'color', 'sequence'];
+    const activeOrder: SerialSegmentType[] = [];
+    for (const seg of rule.segmentOrder) if (!activeOrder.includes(seg)) activeOrder.push(seg);
+    for (const seg of SERIAL_PRIORITY) if (!activeOrder.includes(seg) && included(seg)) activeOrder.push(seg);
+
+    const activeParts = activeOrder.filter(included).map(seg => segmentValues[seg]).filter(Boolean);
 
     let result = activeParts.filter(Boolean).join(rule.delimiter);
     if (rule.customSuffix) {
@@ -554,7 +559,7 @@ export function generateBatchNumberPreview(rule: BatchNumberLogicRule, ctx: Batc
     const segmentValues: Record<BatchSegmentType, string> = {
         custom_prefix: rule.customPrefix || 'BAT',
         plant: padFor('plant', resolvePlantCode(plant, true)),
-        vendor: padFor('vendor', 'VB1'),
+        vendor: padFor('vendor', resolveVendorCode(ctx.vendor ?? 'VB1', true)),
         financial_year: padFor('financial_year', resolveFinancialYearCode(date, true)),
         month: padFor('month', resolveMonthCode(date, true)),
         category: padFor('category', resolveCategoryCode(prod.category || 'faucet', true)),
@@ -563,30 +568,27 @@ export function generateBatchNumberPreview(rule: BatchNumberLogicRule, ctx: Batc
         sequence: padFor('sequence', seq)
     };
 
-    const activeParts: string[] = [];
-    for (const seg of rule.segmentOrder) {
-        if (seg === 'sequence') {
-            activeParts.push(segmentValues.sequence);
-            continue;
+    const included = (seg: BatchSegmentType): boolean => {
+        switch (seg) {
+            case 'sequence': return true;
+            case 'custom_prefix': return rule.inclusions.includeCustomPrefix && !!segmentValues.custom_prefix;
+            case 'plant': return rule.inclusions.includePlant && !!segmentValues.plant;
+            case 'vendor': return rule.inclusions.includeVendor && !!segmentValues.vendor;
+            case 'financial_year': return rule.inclusions.includeFinancialYear && !!segmentValues.financial_year;
+            case 'month': return rule.inclusions.includeMonth && !!segmentValues.month;
+            case 'category': return rule.inclusions.includeCategory && !!segmentValues.category;
+            case 'group': return rule.inclusions.includeGroup && !!segmentValues.group;
+            case 'shift': return rule.inclusions.includeShift && !!segmentValues.shift;
+            default: return false;
         }
-        if (seg === 'custom_prefix' && rule.inclusions.includeCustomPrefix && segmentValues.custom_prefix) {
-            activeParts.push(segmentValues.custom_prefix);
-        } else if (seg === 'plant' && rule.inclusions.includePlant && segmentValues.plant) {
-            activeParts.push(segmentValues.plant);
-        } else if (seg === 'vendor' && rule.inclusions.includeVendor && segmentValues.vendor) {
-            activeParts.push(segmentValues.vendor);
-        } else if (seg === 'financial_year' && rule.inclusions.includeFinancialYear && segmentValues.financial_year) {
-            activeParts.push(segmentValues.financial_year);
-        } else if (seg === 'month' && rule.inclusions.includeMonth && segmentValues.month) {
-            activeParts.push(segmentValues.month);
-        } else if (seg === 'category' && rule.inclusions.includeCategory && segmentValues.category) {
-            activeParts.push(segmentValues.category);
-        } else if (seg === 'group' && rule.inclusions.includeGroup && segmentValues.group) {
-            activeParts.push(segmentValues.group);
-        } else if (seg === 'shift' && rule.inclusions.includeShift && segmentValues.shift) {
-            activeParts.push(segmentValues.shift);
-        }
-    }
+    };
+
+    const BATCH_PRIORITY: BatchSegmentType[] = ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'category', 'group', 'shift', 'sequence'];
+    const activeOrder: BatchSegmentType[] = [];
+    for (const seg of rule.segmentOrder) if (!activeOrder.includes(seg)) activeOrder.push(seg);
+    for (const seg of BATCH_PRIORITY) if (!activeOrder.includes(seg) && included(seg)) activeOrder.push(seg);
+
+    const activeParts = activeOrder.filter(included).map(seg => segmentValues[seg]).filter(Boolean);
 
     let result = activeParts.filter(Boolean).join(rule.delimiter);
     if (rule.customSuffix) {

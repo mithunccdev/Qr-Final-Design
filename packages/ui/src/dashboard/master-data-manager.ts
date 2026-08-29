@@ -288,7 +288,7 @@ export class MasterDataManagerView {
         });
     }
 
-    /** Renders a single "Master Code Segment Inclusion" card with a per-segment Pad input. */
+    /** Renders a single "Master Code Segment Inclusion" card with a per-segment Pad input and reorder arrows. */
     private codeSegmentCard(o: {
         checkboxId: string;
         padId: string;
@@ -299,6 +299,9 @@ export class MasterDataManagerView {
         checked: boolean;
         pad: number;
         noPad?: boolean;
+        segKey?: string;
+        count?: number;
+        reorderable?: boolean;
     }): string {
         const activeHtml = o.active
             ? `Active: <span class="nav-item-badge ${o.active.badge}" style="font-family: monospace; font-weight: 700;">${esc(o.active.code)}</span>`
@@ -309,10 +312,19 @@ export class MasterDataManagerView {
                     Pad
                     <input type="number" id="${o.padId}" min="0" max="8" value="${o.pad}" style="width:46px;padding:2px 4px;font-size:0.75rem;border:1px solid var(--line);border-radius:5px;text-align:center;" />
                 </label>`;
+        const reorderHtml = o.reorderable && o.count > 1
+            ? `<span style="display:inline-flex;gap:2px;" class="seg-reorder" data-seg="${esc(o.segKey)}">
+                    <button type="button" class="btn-reorder btn-reorder-up" title="Move earlier">▲</button>
+                    <button type="button" class="btn-reorder btn-reorder-down" title="Move later">▼</button>
+                </span>`
+            : '';
         const footer = `
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;padding-top:6px;border-top:1px dashed var(--line);">
                 ${padHtml}
-                ${o.manage ? `<button class="btn btn-sm btn-outline btn-jump-master" data-tab="${esc(o.manage.tab)}" style="font-size:0.72rem;padding:2px 6px;">⚙️ Manage ${esc(o.manage.label)} ➔</button>` : ''}
+                <span style="display:inline-flex;align-items:center;gap:6px;">
+                    ${o.manage ? `<button class="btn btn-sm btn-outline btn-jump-master" data-tab="${esc(o.manage.tab)}" style="font-size:0.72rem;padding:2px 6px;">⚙️ Manage ${esc(o.manage.label)} ➔</button>` : ''}
+                    ${reorderHtml}
+                </span>
             </div>`;
         return `
         <div class="checkbox-label-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);">
@@ -327,9 +339,63 @@ export class MasterDataManagerView {
         </div>`;
     }
 
+    /** Render the segment cards ordered by the rule's segmentOrder (unlisted ones appended). */
+    private renderOrderedSegmentCards(kind: 'serial' | 'batch', rule: any, cfgs: any[]): string {
+        const order = (rule.segmentOrder || []).map(String);
+        const PRIORITY = kind === 'serial'
+            ? ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'category', 'group', 'sku', 'color', 'sequence']
+            : ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'category', 'group', 'shift', 'sequence'];
+        const pos = (seg: string) => {
+            const i = order.indexOf(seg);
+            if (i !== -1) return i;
+            const p = PRIORITY.indexOf(seg);
+            return order.length + (p >= 0 ? p : 99);
+        };
+        const sorted = [...cfgs].sort((a, b) => pos(a.segKey) - pos(b.segKey));
+        return sorted.map(c => this.codeSegmentCard({ ...c, count: order.length, reorderable: true })).join('');
+    }
+
+    /** Move a segment earlier/later within the rule's segmentOrder and persist. */
+    private moveSegment(kind: 'serial' | 'batch', seg: string, dir: -1 | 1): void {
+        const rule = kind === 'serial'
+            ? getSerialLogicRule(this.selectedPlantForRule)
+            : getBatchLogicRule(this.selectedPlantForRule);
+        const order = [...(rule.segmentOrder || [])].map(String);
+        let i = order.indexOf(seg);
+        if (i === -1) { order.push(seg); i = order.length - 1; }
+        const j = i + dir;
+        if (j < 0 || j >= order.length) return;
+        [order[i], order[j]] = [order[j], order[i]];
+        rule.segmentOrder = order as any;
+        if (kind === 'serial') { saveSerialLogicRule(rule as any); void persistSerialLogicRulesToDb(); }
+        else { saveBatchLogicRule(rule as any); void persistBatchLogicRulesToDb(); }
+        this.render();
+    }
+
+    /** Bind the segment reorder (▲/▼) buttons. */
+    private bindReorder(kind: 'serial' | 'batch'): void {
+        this.container.querySelectorAll<HTMLButtonElement>('.btn-reorder-up').forEach(b => {
+            b.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const seg = (b.closest('.seg-reorder') as HTMLElement)?.dataset?.seg;
+                if (seg) this.moveSegment(kind, seg, -1);
+            });
+        });
+        this.container.querySelectorAll<HTMLButtonElement>('.btn-reorder-down').forEach(b => {
+            b.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const seg = (b.closest('.seg-reorder') as HTMLElement)?.dataset?.seg;
+                if (seg) this.moveSegment(kind, seg, 1);
+            });
+        });
+    }
+
     // ── 🔢 SERIAL NUMBER LOGIC BUILDER ──────────────────────────────────────────
     private renderSerialLogicPage() {
         const rule = getSerialLogicRule(this.selectedPlantForRule);
+        const segCount = rule.segmentOrder.length;
         const plants = getMasterData('plant');
         const targetPlant = this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL';
         const preview = generateSerialNumberPreview(rule, { plant: targetPlant });
@@ -429,14 +495,16 @@ export class MasterDataManagerView {
                         </div>
 
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
-                            ${this.codeSegmentCard({ checkboxId: 'inc-sl-plant', padId: 'pad-sl-plant', title: 'Plant Serial Code', active: { code: mapping.plant.code, badge: 'badge-emerald' }, manage: { tab: 'plant', label: 'in Plants Master' }, checked: rule.inclusions.includePlant, pad: rule.segmentPadding?.plant ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-sl-fy', padId: 'pad-sl-fy', title: 'Financial Year Serial Code', active: { code: mapping.financialYear.code, badge: 'badge-indigo' }, manage: { tab: 'financial_year', label: 'in FY Master' }, checked: rule.inclusions.includeFinancialYear, pad: rule.segmentPadding?.financial_year ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-sl-month', padId: 'pad-sl-month', title: 'Month Serial Code', active: { code: mapping.month.code, badge: 'badge-cyan' }, manage: { tab: 'month', label: 'in Months Master' }, checked: rule.inclusions.includeMonth, pad: rule.segmentPadding?.month ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-sl-category', padId: 'pad-sl-category', title: 'Category Serial Code', active: { code: mapping.category.code, badge: 'badge-emerald' }, manage: { tab: 'category', label: 'in Categories' }, checked: rule.inclusions.includeCategory, pad: rule.segmentPadding?.category ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-sl-group', padId: 'pad-sl-group', title: 'Group Serial Code', active: { code: mapping.group.code, badge: 'badge-emerald' }, manage: { tab: 'group', label: 'in Groups' }, checked: rule.inclusions.includeGroup, pad: rule.segmentPadding?.group ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-sl-vendor', padId: 'pad-sl-vendor', title: 'Vendor Serial Code', active: { code: mapping.vendor.code, badge: 'badge-neutral' }, manage: { tab: 'vendor', label: 'in Vendors' }, checked: rule.inclusions.includeVendor, pad: rule.segmentPadding?.vendor ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-sl-color', padId: 'pad-sl-color', title: 'Color / Finish Code', active: { code: mapping.color.code, badge: 'badge-amber' }, manage: { tab: 'color', label: 'in Colors' }, checked: rule.inclusions.includeColor, pad: rule.segmentPadding?.color ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-sl-sku', padId: 'pad-sl-sku', title: 'Product SKU Segment', desc: 'Alphanumeric suffix from Product SKU', checked: rule.inclusions.includeSku, pad: rule.segmentPadding?.sku ?? rule.sequencePadding })}
+                            ${this.renderOrderedSegmentCards('serial', rule, [
+                                { checkboxId: 'inc-sl-plant', padId: 'pad-sl-plant', title: 'Plant Serial Code', active: { code: mapping.plant.code, badge: 'badge-emerald' }, manage: { tab: 'plant', label: 'in Plants Master' }, checked: rule.inclusions.includePlant, pad: rule.segmentPadding?.plant ?? rule.sequencePadding, segKey: 'plant' },
+                                { checkboxId: 'inc-sl-fy', padId: 'pad-sl-fy', title: 'Financial Year Serial Code', active: { code: mapping.financialYear.code, badge: 'badge-indigo' }, manage: { tab: 'financial_year', label: 'in FY Master' }, checked: rule.inclusions.includeFinancialYear, pad: rule.segmentPadding?.financial_year ?? rule.sequencePadding, segKey: 'financial_year' },
+                                { checkboxId: 'inc-sl-month', padId: 'pad-sl-month', title: 'Month Serial Code', active: { code: mapping.month.code, badge: 'badge-cyan' }, manage: { tab: 'month', label: 'in Months Master' }, checked: rule.inclusions.includeMonth, pad: rule.segmentPadding?.month ?? rule.sequencePadding, segKey: 'month' },
+                                { checkboxId: 'inc-sl-category', padId: 'pad-sl-category', title: 'Category Serial Code', active: { code: mapping.category.code, badge: 'badge-emerald' }, manage: { tab: 'category', label: 'in Categories' }, checked: rule.inclusions.includeCategory, pad: rule.segmentPadding?.category ?? rule.sequencePadding, segKey: 'category' },
+                                { checkboxId: 'inc-sl-group', padId: 'pad-sl-group', title: 'Group Serial Code', active: { code: mapping.group.code, badge: 'badge-emerald' }, manage: { tab: 'group', label: 'in Groups' }, checked: rule.inclusions.includeGroup, pad: rule.segmentPadding?.group ?? rule.sequencePadding, segKey: 'group' },
+                                { checkboxId: 'inc-sl-vendor', padId: 'pad-sl-vendor', title: 'Vendor Serial Code', active: { code: mapping.vendor.code, badge: 'badge-neutral' }, manage: { tab: 'vendor', label: 'in Vendors' }, checked: rule.inclusions.includeVendor, pad: rule.segmentPadding?.vendor ?? rule.sequencePadding, segKey: 'vendor' },
+                                { checkboxId: 'inc-sl-color', padId: 'pad-sl-color', title: 'Color / Finish Code', active: { code: mapping.color.code, badge: 'badge-amber' }, manage: { tab: 'color', label: 'in Colors' }, checked: rule.inclusions.includeColor, pad: rule.segmentPadding?.color ?? rule.sequencePadding, segKey: 'color' },
+                                { checkboxId: 'inc-sl-sku', padId: 'pad-sl-sku', title: 'Product SKU Segment', desc: 'Alphanumeric suffix from Product SKU', checked: rule.inclusions.includeSku, pad: rule.segmentPadding?.sku ?? rule.sequencePadding, segKey: 'sku' }
+                            ])}
                         </div>
 
                         <!-- CUSTOM STATIC PREFIX / SUFFIX -->
@@ -543,6 +611,8 @@ export class MasterDataManagerView {
                 this.render();
             });
         });
+
+        this.bindReorder('serial');
 
         // Quick Jump to Master Page
         this.container.querySelectorAll<HTMLButtonElement>('.btn-jump-master').forEach(b => {
@@ -681,6 +751,7 @@ export class MasterDataManagerView {
     // ── 📦 BATCH NUMBER LOGIC BUILDER ───────────────────────────────────────────
     private renderBatchLogicPage() {
         const rule = getBatchLogicRule(this.selectedPlantForRule);
+        const segCount = rule.segmentOrder.length;
         const plants = getMasterData('plant');
         const targetPlant = this.selectedPlantForRule !== 'ALL' ? this.selectedPlantForRule : 'KSPL';
         const preview = generateBatchNumberPreview(rule, { plant: targetPlant });
@@ -779,12 +850,16 @@ export class MasterDataManagerView {
                         </div>
 
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
-                            ${this.codeSegmentCard({ checkboxId: 'inc-bl-prefix', padId: 'pad-bl-prefix', title: 'Prefix Tag (BAT / LOT)', desc: `Static Tag: ${rule.customPrefix || 'BAT'}`, checked: rule.inclusions.includeCustomPrefix, pad: rule.sequencePadding, noPad: true })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-bl-plant', padId: 'pad-bl-plant', title: 'Plant Batch Code', active: { code: mapping.plant.code, badge: 'badge-cyan' }, manage: { tab: 'plant', label: 'in Plants Master' }, checked: rule.inclusions.includePlant, pad: rule.segmentPadding?.plant ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-bl-fy', padId: 'pad-bl-fy', title: 'Financial Year Batch Code', active: { code: mapping.financialYear.code, badge: 'badge-indigo' }, manage: { tab: 'financial_year', label: 'in FY Master' }, checked: rule.inclusions.includeFinancialYear, pad: rule.segmentPadding?.financial_year ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-bl-month', padId: 'pad-bl-month', title: 'Month Batch Code', active: { code: mapping.month.code, badge: 'badge-cyan' }, manage: { tab: 'month', label: 'in Months Master' }, checked: rule.inclusions.includeMonth, pad: rule.segmentPadding?.month ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-bl-category', padId: 'pad-bl-category', title: 'Category Batch Code', active: { code: mapping.category.code, badge: 'badge-emerald' }, manage: { tab: 'category', label: 'in Categories' }, checked: rule.inclusions.includeCategory, pad: rule.segmentPadding?.category ?? rule.sequencePadding })}
-                            ${this.codeSegmentCard({ checkboxId: 'inc-bl-shift', padId: 'pad-bl-shift', title: 'Production Shift Identifier', desc: 'Shift Tag: A / B / C', checked: rule.inclusions.includeShift, pad: rule.sequencePadding, noPad: true })}
+                            ${this.renderOrderedSegmentCards('batch', rule, [
+                                { checkboxId: 'inc-bl-prefix', padId: 'pad-bl-prefix', title: 'Prefix Tag (BAT / LOT)', desc: `Static Tag: ${rule.customPrefix || 'BAT'}`, checked: rule.inclusions.includeCustomPrefix, pad: rule.sequencePadding, noPad: true, segKey: 'custom_prefix' },
+                                { checkboxId: 'inc-bl-plant', padId: 'pad-bl-plant', title: 'Plant Batch Code', active: { code: mapping.plant.code, badge: 'badge-cyan' }, manage: { tab: 'plant', label: 'in Plants Master' }, checked: rule.inclusions.includePlant, pad: rule.segmentPadding?.plant ?? rule.sequencePadding, segKey: 'plant' },
+                                { checkboxId: 'inc-bl-vendor', padId: 'pad-bl-vendor', title: 'Vendor Batch Code', active: { code: mapping.vendor.code, badge: 'badge-neutral' }, manage: { tab: 'vendor', label: 'in Vendors' }, checked: rule.inclusions.includeVendor, pad: rule.segmentPadding?.vendor ?? rule.sequencePadding, segKey: 'vendor' },
+                                { checkboxId: 'inc-bl-fy', padId: 'pad-bl-fy', title: 'Financial Year Batch Code', active: { code: mapping.financialYear.code, badge: 'badge-indigo' }, manage: { tab: 'financial_year', label: 'in FY Master' }, checked: rule.inclusions.includeFinancialYear, pad: rule.segmentPadding?.financial_year ?? rule.sequencePadding, segKey: 'financial_year' },
+                                { checkboxId: 'inc-bl-month', padId: 'pad-bl-month', title: 'Month Batch Code', active: { code: mapping.month.code, badge: 'badge-cyan' }, manage: { tab: 'month', label: 'in Months Master' }, checked: rule.inclusions.includeMonth, pad: rule.segmentPadding?.month ?? rule.sequencePadding, segKey: 'month' },
+                                { checkboxId: 'inc-bl-category', padId: 'pad-bl-category', title: 'Category Batch Code', active: { code: mapping.category.code, badge: 'badge-emerald' }, manage: { tab: 'category', label: 'in Categories' }, checked: rule.inclusions.includeCategory, pad: rule.segmentPadding?.category ?? rule.sequencePadding, segKey: 'category' },
+                                { checkboxId: 'inc-bl-group', padId: 'pad-bl-group', title: 'Group Batch Code', active: { code: mapping.group.code, badge: 'badge-emerald' }, manage: { tab: 'group', label: 'in Groups' }, checked: rule.inclusions.includeGroup, pad: rule.segmentPadding?.group ?? rule.sequencePadding, segKey: 'group' },
+                                { checkboxId: 'inc-bl-shift', padId: 'pad-bl-shift', title: 'Production Shift Identifier', desc: 'Shift Tag: A / B / C', checked: rule.inclusions.includeShift, pad: rule.sequencePadding, noPad: true, segKey: 'shift' }
+                            ])}
                         </div>
 
                         <div class="form-group" style="margin-top: 14px; max-width: 320px;">
@@ -866,6 +941,8 @@ export class MasterDataManagerView {
             });
         });
 
+        this.bindReorder('batch');
+
         // Quick Jump to Master Page
         this.container.querySelectorAll<HTMLButtonElement>('.btn-jump-master').forEach(b => {
             b.addEventListener('click', (e) => {
@@ -891,9 +968,11 @@ export class MasterDataManagerView {
                 resetFrequency: (this.container.querySelector('#bl-reset-freq') as HTMLSelectElement).value as any,
                 segmentPadding: {
                     plant: parseInt((this.container.querySelector('#pad-bl-plant') as HTMLInputElement)?.value || '', 10),
+                    vendor: parseInt((this.container.querySelector('#pad-bl-vendor') as HTMLInputElement)?.value || '', 10),
                     financial_year: parseInt((this.container.querySelector('#pad-bl-fy') as HTMLInputElement)?.value || '', 10),
                     month: parseInt((this.container.querySelector('#pad-bl-month') as HTMLInputElement)?.value || '', 10),
-                    category: parseInt((this.container.querySelector('#pad-bl-category') as HTMLInputElement)?.value || '', 10)
+                    category: parseInt((this.container.querySelector('#pad-bl-category') as HTMLInputElement)?.value || '', 10),
+                    group: parseInt((this.container.querySelector('#pad-bl-group') as HTMLInputElement)?.value || '', 10)
                 },
                 inclusions: {
                     includeCustomPrefix: (this.container.querySelector('#inc-bl-prefix') as HTMLInputElement).checked,
@@ -901,9 +980,9 @@ export class MasterDataManagerView {
                     includeFinancialYear: (this.container.querySelector('#inc-bl-fy') as HTMLInputElement).checked,
                     includeMonth: (this.container.querySelector('#inc-bl-month') as HTMLInputElement).checked,
                     includeCategory: (this.container.querySelector('#inc-bl-category') as HTMLInputElement).checked,
-                    includeGroup: rule.inclusions.includeGroup,
+                    includeGroup: (this.container.querySelector('#inc-bl-group') as HTMLInputElement).checked,
                     includeShift: (this.container.querySelector('#inc-bl-shift') as HTMLInputElement).checked,
-                    includeVendor: rule.inclusions.includeVendor
+                    includeVendor: (this.container.querySelector('#inc-bl-vendor') as HTMLInputElement).checked
                 }
             };
 
@@ -939,9 +1018,11 @@ export class MasterDataManagerView {
                 resetFrequency: (this.container.querySelector('#bl-reset-freq') as HTMLSelectElement).value as any,
                 segmentPadding: {
                     plant: padOf('pad-bl-plant'),
+                    vendor: padOf('pad-bl-vendor'),
                     financial_year: padOf('pad-bl-fy'),
                     month: padOf('pad-bl-month'),
-                    category: padOf('pad-bl-category')
+                    category: padOf('pad-bl-category'),
+                    group: padOf('pad-bl-group')
                 },
                 inclusions: {
                     includeCustomPrefix: (this.container.querySelector('#inc-bl-prefix') as HTMLInputElement).checked,
@@ -949,9 +1030,9 @@ export class MasterDataManagerView {
                     includeFinancialYear: (this.container.querySelector('#inc-bl-fy') as HTMLInputElement).checked,
                     includeMonth: (this.container.querySelector('#inc-bl-month') as HTMLInputElement).checked,
                     includeCategory: (this.container.querySelector('#inc-bl-category') as HTMLInputElement).checked,
-                    includeGroup: rule.inclusions.includeGroup,
+                    includeGroup: (this.container.querySelector('#inc-bl-group') as HTMLInputElement).checked,
                     includeShift: (this.container.querySelector('#inc-bl-shift') as HTMLInputElement).checked,
-                    includeVendor: rule.inclusions.includeVendor
+                    includeVendor: (this.container.querySelector('#inc-bl-vendor') as HTMLInputElement).checked
                 }
             };
 
