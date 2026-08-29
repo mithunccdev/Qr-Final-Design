@@ -180,7 +180,7 @@ export class SupabaseService {
             if (signIn.reason && /not confirmed|email_not_confirmed/i.test(signIn.reason)) {
                 return {
                     success: false,
-                    message: 'Account is not confirmed. In Supabase: disable "Confirm email" (Authentication → Providers → Email), then confirm or delete the account in Authentication → Users, and try again.'
+                    message: 'Your account is not confirmed yet. Please contact your administrator.'
                 };
             }
         }
