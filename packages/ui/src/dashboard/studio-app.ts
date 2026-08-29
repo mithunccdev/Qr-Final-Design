@@ -106,6 +106,35 @@ export class QRStudioApp {
         return hasPageAccess(this.userRole, page);
     }
 
+    private static readonly PAGE_BY_MODE: Record<string, PageKey> = {
+        dashboard: 'dashboard', designer: 'designer', print: 'print', library: 'templates',
+        products: 'products', serials: 'serials', batches: 'batches', employees: 'employees',
+        users: 'users', settings: 'settings'
+    };
+
+    /** Hide/show sidebar nav items (and empty groups) based on role permissions. */
+    private applyNavPermissions(): void {
+        if (!this.mountElement) return;
+        const map = QRStudioApp.PAGE_BY_MODE;
+        this.mountElement.querySelectorAll<HTMLElement>('.sidebar-nav-item').forEach(item => {
+            const page = map[item.dataset.mode as string];
+            const allowed = page ? this.canAccess(page) : true;
+            item.style.display = allowed ? '' : 'none';
+        });
+        // Hide entire nav groups that have no visible items
+        this.mountElement.querySelectorAll<HTMLElement>('.sidebar-nav-group').forEach(group => {
+            const visible = Array.from(group.querySelectorAll<HTMLElement>('.sidebar-nav-item'))
+                .some(i => i.style.display !== 'none');
+            group.style.display = visible ? '' : 'none';
+        });
+        // If the currently-active mode is no longer allowed, fall back to Home
+        const cur = this.activeMode;
+        const page = map[cur];
+        if (page && !this.canAccess(page)) {
+            this.switchMode('dashboard');
+        }
+    }
+
     private get allowedCategories(): string[] {
         return this.currentUser?.allowedTemplateCategories || ['All'];
     }
@@ -365,8 +394,9 @@ export class QRStudioApp {
         void hydrateSerialLogicRulesFromDb();
         void hydrateBatchLogicRulesFromDb();
 
-        // Sync role permissions from DB so page/action access is identical everywhere
-        void hydrateRolePermissionsFromDb();
+        // Sync role permissions from DB so page/action access is identical everywhere.
+        // After hydration, refresh nav visibility so restrictions apply immediately.
+        void hydrateRolePermissionsFromDb().then(() => this.applyNavPermissions());
 
         // Sync company branding from DB
         this.applyBranding();
