@@ -8,6 +8,15 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
+# Build-time config (set these in Coolify's build arguments). They are baked into
+# the static bundle by Vite. No runtime env is needed for a static SPA.
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ARG VITE_SUPABASE_ENABLED
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
+    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY \
+    VITE_SUPABASE_ENABLED=$VITE_SUPABASE_ENABLED
+
 # Install workspace dependencies (package-lock.json covers all workspaces)
 COPY package.json package-lock.json ./
 COPY packages ./packages

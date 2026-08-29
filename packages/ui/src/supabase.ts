@@ -27,10 +27,14 @@ export interface SupabaseConfig {
     enabled: boolean;
 }
 
+// Build-time configuration (set via Vite env vars / Coolify build args).
+// Values are baked into the static bundle. In-app Settings → API overrides these.
+const ENV: any = (import.meta as any)?.env || {};
+
 const DEFAULT_CONFIG: SupabaseConfig = {
-    url: 'https://supabase2.kajariabathware.in',
-    anonKey: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NzQ4MDg4MCwiZXhwIjo0OTQzMTU0NDgwLCJyb2xlIjoiYW5vbiJ9.o7JoSXeLTJOORJGAs_qjjChKNTHPl9c-1UBb5R1fFGs',
-    enabled: true
+    url: ENV.VITE_SUPABASE_URL || 'https://supabase2.kajariabathware.in',
+    anonKey: ENV.VITE_SUPABASE_ANON_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NzQ4MDg4MCwiZXhwIjo0OTQzMTU0NDgwLCJyb2xlIjoiYW5vbiJ9.o7JoSXeLTJOORJGAs_qjjChKNTHPl9c-1UBb5R1fFGs',
+    enabled: ENV.VITE_SUPABASE_ENABLED !== 'false'
 };
 
 const STORAGE_KEY_CONFIG = 'qrlayout_supabase_config';
