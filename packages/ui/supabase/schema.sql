@@ -648,3 +648,46 @@ create policy "logic_rules_update" on public.logic_rules
 drop policy if exists "logic_rules_delete" on public.logic_rules;
 create policy "logic_rules_delete" on public.logic_rules
   for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 10. ROLE & ACCESS CONTROL (per-role page + action permissions)
+--     Maps which pages (view) and actions (create/edit/delete) each role gets.
+--     Admin is always full-access (enforced in the app; not stored). Only admin
+--     may edit; any authenticated user may read their own role's permissions.
+-- ════════════════════════════════════════════════════════════════════════════
+create table if not exists public.role_permissions (
+    role       text not null,
+    page       text not null,
+    can_view   boolean not null default false,
+    can_create boolean not null default false,
+    can_edit   boolean not null default false,
+    can_delete boolean not null default false,
+    updated_by text,
+    updated_at timestamptz not null default now(),
+    primary key (role, page)
+);
+
+drop trigger if exists trg_role_permissions_updated_at on public.role_permissions;
+create trigger trg_role_permissions_updated_at
+  before update on public.role_permissions
+  for each row execute function public.set_updated_at();
+
+alter table public.role_permissions enable row level security;
+
+-- any authenticated user may read permissions (used to render nav / gates)
+drop policy if exists "role_permissions_select" on public.role_permissions;
+create policy "role_permissions_select" on public.role_permissions
+  for select using (auth.role() = 'authenticated');
+
+-- only admins may modify the access-control matrix
+drop policy if exists "role_permissions_insert" on public.role_permissions;
+create policy "role_permissions_insert" on public.role_permissions
+  for insert with check (public.is_admin());
+
+drop policy if exists "role_permissions_update" on public.role_permissions;
+create policy "role_permissions_update" on public.role_permissions
+  for update using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "role_permissions_delete" on public.role_permissions;
+create policy "role_permissions_delete" on public.role_permissions
+  for delete using (public.is_admin());

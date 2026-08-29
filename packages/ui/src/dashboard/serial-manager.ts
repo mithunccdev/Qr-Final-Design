@@ -6,6 +6,7 @@ import { ProductRecord, SerializedUnit, formatINR, parseINRValue } from './produ
 import { BatchRecord } from './batch-manager';
 import { getSerialLogicRule, generateSerialNumberPreview, generateAutomatedSerials } from './serial-batch-logic';
 import { esc } from '../escape';
+import { canCurrentUser } from './permissions';
 
 export interface SerialManagerOptions {
     container: HTMLElement;
@@ -217,9 +218,11 @@ export class SerialManagerView {
                         <button class="btn btn-outline" id="btn-print-selected-serials" style="${this.selectedSerialIds.size > 0 ? 'border-color: var(--accent); color: var(--accent);' : ''}">
                             🖨️ Print Selected (${this.selectedSerialIds.size})
                         </button>
+                        ${canCurrentUser('serials', 'create') ? `
                         <button class="btn btn-primary" id="btn-open-gen-serials-modal">
                             ➕ Generate Serial Numbers
                         </button>
+                        ` : ''}
                     </div>
                 </div>
 

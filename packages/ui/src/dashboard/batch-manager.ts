@@ -4,6 +4,7 @@ import { PREBUILT_TEMPLATES } from './templates-data';
 import { ProductRecord, SerializedUnit } from './product-manager';
 import { getBatchLogicRule, generateBatchNumberPreview } from './serial-batch-logic';
 import { esc } from '../escape';
+import { canCurrentUser } from './permissions';
 
 export interface BatchRecord {
     id: string;
@@ -199,9 +200,11 @@ export class BatchManagerView {
                         <button class="btn btn-outline" id="btn-print-selected-batches" style="${this.selectedBatchIds.size > 0 ? 'border-color: var(--accent); color: var(--accent);' : ''}">
                             🖨️ Print Batch Labels (${this.selectedBatchIds.size})
                         </button>
+                        ${canCurrentUser('batches', 'create') ? `
                         <button class="btn btn-primary" id="btn-open-create-batch-modal">
                             ➕ Create New Batch
                         </button>
+                        ` : ''}
                     </div>
                 </div>
 

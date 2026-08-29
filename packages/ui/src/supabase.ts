@@ -1177,6 +1177,43 @@ export class SupabaseService {
     }
 
     // ════════════════════════════════════════════════════════════════════════════
+    // ROLE & ACCESS CONTROL (role_permissions)
+    // ════════════════════════════════════════════════════════════════════════════
+    public async fetchRolePermissions(): Promise<any[] | null> {
+        if (!this.client || !this.config.enabled) return null;
+        try {
+            const { data, error } = await this.client
+                .from('role_permissions')
+                .select('*');
+            if (error) {
+                console.warn('Supabase fetchRolePermissions error:', error.message);
+                return null;
+            }
+            return data || [];
+        } catch (e) {
+            console.error('Error fetching role permissions', e);
+            return null;
+        }
+    }
+
+    public async saveRolePermissions(rows: any[]): Promise<boolean> {
+        if (!this.client || !this.config.enabled) return true; // offline: local-only is fine
+        const by = this.currentUserProfile?.email || this.currentUserProfile?.id || null;
+        try {
+            const payload = rows.map(r => ({ ...r, updated_by: by, updated_at: new Date().toISOString() }));
+            const { error } = await this.client.from('role_permissions').upsert(payload);
+            if (error) {
+                console.warn('Supabase saveRolePermissions error:', error.message);
+                return false;
+            }
+            return true;
+        } catch (e: any) {
+            console.warn('Supabase saveRolePermissions error:', e?.message || e);
+            return false;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
     // COMPANY BRANDING / WHITE-LABEL PROFILE
     // ════════════════════════════════════════════════════════════════════════════
     public async fetchCompanyProfile(): Promise<CompanyProfile | null> {

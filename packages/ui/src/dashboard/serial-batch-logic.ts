@@ -539,6 +539,7 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
 
 export interface BatchContext {
     plant?: string;
+    vendor?: string;
     product?: Partial<ProductRecord>;
     date?: Date;
     sequence?: number;

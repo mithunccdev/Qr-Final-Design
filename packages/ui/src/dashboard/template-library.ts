@@ -23,6 +23,7 @@ import {
 } from './print-media';
 import { supabaseService } from '../supabase';
 import { esc } from '../escape';
+import { canCurrentUser } from './permissions';
 import type { EntitySchema } from '../types';
 
 export interface TemplateLibraryOptions {
@@ -280,10 +281,12 @@ export class TemplateLibraryView {
                         </select>
                     </div>
 
+                    ${canCurrentUser('templates', 'create') ? `
                     <button class="btn btn-primary btn-create-template-primary" id="btn-open-create-template-modal">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
                         <span>Create Template</span>
                     </button>
+                    ` : ''}
                 </div>
             </div>
 

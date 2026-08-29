@@ -13,6 +13,9 @@ import { UserManagerView } from './user-manager';
 import { MasterDataManagerView } from './master-data-manager';
 import { mergeMasterDataFromDb } from './master-data';
 import { hydrateSerialLogicRulesFromDb, hydrateBatchLogicRulesFromDb } from './serial-batch-logic';
+import { hydrateRolePermissionsFromDb, hasPageAccess } from './permissions';
+import type { PageKey } from './permissions';
+import { AccessControlView } from './access-control';
 import { BrandingManagerView } from './branding-manager';
 import { loadCompanyProfile, logoBadgeHtml, CompanyProfile } from './branding';
 import { AuthView } from './auth-view';
@@ -98,6 +101,11 @@ export class QRStudioApp {
         return this.currentUser?.role || 'user';
     }
 
+    /** Whether the current user may access a page (admins always can). */
+    private canAccess(page: PageKey): boolean {
+        return hasPageAccess(this.userRole, page);
+    }
+
     private get allowedCategories(): string[] {
         return this.currentUser?.allowedTemplateCategories || ['All'];
     }
@@ -162,7 +170,7 @@ export class QRStudioApp {
                     <div class="sidebar-nav-group">
                         <div class="nav-group-label">Studio</div>
 
-                        ${isDesigner ? `
+                        ${this.canAccess('designer') ? `
                             <button class="sidebar-nav-item ${this.activeMode === 'designer' ? 'active' : ''}" data-mode="designer" title="Visual Label Designer">
                                 <span class="nav-item-icon">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -221,23 +229,27 @@ export class QRStudioApp {
                     </div>
 
                     <!-- GROUP 4: ADMIN & SYSTEM SETTINGS -->
-                    ${isAdmin ? `
+                    ${(this.canAccess('users') || this.canAccess('settings')) ? `
                         <div class="sidebar-nav-group">
                             <div class="nav-group-label">Admin</div>
 
+                            ${this.canAccess('users') ? `
                             <button class="sidebar-nav-item ${this.activeMode === 'users' ? 'active' : ''}" data-mode="users" title="User Management">
                                 <span class="nav-item-icon">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
                                 </span>
                                 <span class="nav-item-label">Users</span>
                             </button>
+                            ` : ''}
 
+                            ${this.canAccess('settings') ? `
                             <button class="sidebar-nav-item ${this.activeMode === 'settings' ? 'active' : ''}" data-mode="settings" title="Settings">
                                 <span class="nav-item-icon">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                                 </span>
                                 <span class="nav-item-label">Settings</span>
                             </button>
+                            ` : ''}
                         </div>
                     ` : ''}
 
@@ -329,15 +341,17 @@ export class QRStudioApp {
         this.usersContainer = this.mountElement.querySelector('#pane-users') as HTMLDivElement;
 
         this.initDashboard();
-        if (isDesigner) this.initDesigner();
+        if (this.canAccess('designer')) this.initDesigner();
         this.initLibrary();
         this.initPrintDashboard();
         this.initProductManager();
         this.initSerialManager();
         this.initBatchManager();
         this.initEmployeeManager();
-        if (isAdmin) {
+        if (this.canAccess('settings')) {
             this.initSettings();
+        }
+        if (this.canAccess('users')) {
             this.initUserManager();
         }
 
@@ -350,6 +364,9 @@ export class QRStudioApp {
         // Sync Serial/Batch logic rules from DB so settings are identical on every device
         void hydrateSerialLogicRulesFromDb();
         void hydrateBatchLogicRulesFromDb();
+
+        // Sync role permissions from DB so page/action access is identical everywhere
+        void hydrateRolePermissionsFromDb();
 
         // Sync company branding from DB
         this.applyBranding();
@@ -594,10 +611,12 @@ export class QRStudioApp {
                 <button class="settings-sub-tab active" data-sub="api">🔌 API</button>
                 <button class="settings-sub-tab" data-sub="master">🗃️ Master Data</button>
                 <button class="settings-sub-tab" data-sub="branding">🏷️ Company</button>
+                <button class="settings-sub-tab" data-sub="access">🔐 Access Control</button>
             </div>
             <div id="settings-page-api" style="display:block;"></div>
             <div id="settings-page-master" style="display:none;"></div>
             <div id="settings-page-branding" style="display:none;"></div>
+            <div id="settings-page-access" style="display:none;"></div>
         </div>`;
 
         this.settingsContainer.querySelectorAll<HTMLButtonElement>('.settings-sub-tab').forEach(btn => {
@@ -607,9 +626,15 @@ export class QRStudioApp {
                 const api = this.settingsContainer.querySelector('#settings-page-api') as HTMLElement;
                 const master = this.settingsContainer.querySelector('#settings-page-master') as HTMLElement;
                 const branding = this.settingsContainer.querySelector('#settings-page-branding') as HTMLElement;
+                const access = this.settingsContainer.querySelector('#settings-page-access') as HTMLElement;
                 if (api) api.style.display = sub === 'api' ? 'block' : 'none';
                 if (master) master.style.display = sub === 'master' ? 'block' : 'none';
                 if (branding) branding.style.display = sub === 'branding' ? 'block' : 'none';
+                if (access) access.style.display = sub === 'access' ? 'block' : 'none';
+                if (sub === 'access' && access && !access.dataset.init) {
+                    access.dataset.init = '1';
+                    new AccessControlView(access);
+                }
             });
         });
 
@@ -814,15 +839,13 @@ export class QRStudioApp {
     }
 
     public switchMode(mode: StudioAppMode) {
-        // Role check
-        if (mode === 'users' || mode === 'settings') {
-            if (this.userRole !== 'admin') {
-                mode = 'dashboard';
-            }
-        } else if (mode === 'designer') {
-            if (this.userRole === 'user') {
-                mode = 'print';
-            }
+        // Role check (based on the access-control matrix; admins always can)
+        if (mode === 'users' && !this.canAccess('users')) {
+            mode = 'dashboard';
+        } else if (mode === 'settings' && !this.canAccess('settings')) {
+            mode = 'dashboard';
+        } else if (mode === 'designer' && !this.canAccess('designer')) {
+            mode = 'print';
         }
 
         this.activeMode = mode;

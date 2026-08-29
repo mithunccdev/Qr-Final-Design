@@ -3,6 +3,7 @@ import type { EntitySchema } from '../types';
 import { PREBUILT_TEMPLATES } from './templates-data';
 import { supabaseService } from '../supabase';
 import { esc } from '../escape';
+import { canCurrentUser } from './permissions';
 
 export interface EmployeeRecord {
     id: string;
@@ -148,9 +149,11 @@ export class EmployeeManagerView {
                         <button class="btn btn-success btn-sm" id="btn-print-selected-badges" ${selectedCount === 0 ? 'disabled' : ''}>
                             🖨️ Print Selected Badges (${selectedCount})
                         </button>
+                        ${canCurrentUser('employees', 'create') ? `
                         <button class="btn btn-primary btn-sm" id="btn-add-new-employee">
                             ➕ Add Employee
                         </button>
+                        ` : ''}
                     </div>
                 </div>
 
