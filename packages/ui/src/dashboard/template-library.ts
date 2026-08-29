@@ -22,6 +22,7 @@ import {
     mediaToPresetFields
 } from './print-media';
 import { supabaseService } from '../supabase';
+import { esc } from '../escape';
 import type { EntitySchema } from '../types';
 
 export interface TemplateLibraryOptions {
@@ -317,9 +318,9 @@ export class TemplateLibraryView {
                         const count = categoryCounts[cat.id] || 0;
                         const isActive = this.selectedCategory === cat.id;
                         return `
-                        <button class="cat-pill ${isActive ? 'active' : ''}" data-cat="${cat.id}">
-                            <span class="cat-pill-icon">${cat.icon}</span>
-                            <span class="cat-pill-label">${cat.label}</span>
+                        <button class="cat-pill ${isActive ? 'active' : ''}" data-cat="${esc(cat.id)}">
+                            <span class="cat-pill-icon">${esc(cat.icon)}</span>
+                            <span class="cat-pill-label">${esc(cat.label)}</span>
                             <span class="cat-pill-count">${count}</span>
                         </button>
                         `;
@@ -364,15 +365,15 @@ export class TemplateLibraryView {
         <tr class="template-line-item" data-id="${t.id}">
             <td>
                 <div class="line-item-cell">
-                    <span class="line-item-icon">${t.icon || '🏷️'}</span>
+                    <span class="line-item-icon">${esc(t.icon || '🏷️')}</span>
                     <div>
-                        <div class="line-item-title">${t.title}${isCustom ? ' <span class="custom-badge-pill">✨ User</span>' : ''}</div>
-                        <div class="line-item-desc">${t.description}</div>
+                        <div class="line-item-title">${esc(t.title)}${isCustom ? ' <span class="custom-badge-pill">✨ User</span>' : ''}</div>
+                        <div class="line-item-desc">${esc(t.description)}</div>
                     </div>
                 </div>
             </td>
-            <td><span class="template-cat-pill">${getCategoryLabel(t.category)}</span></td>
-            <td class="line-size">${t.layout.width} × ${t.layout.height} ${t.layout.unit}</td>
+            <td><span class="template-cat-pill">${esc(getCategoryLabel(t.category))}</span></td>
+            <td class="line-size">${esc(String(t.layout.width))} × ${esc(String(t.layout.height))} ${esc(t.layout.unit)}</td>
             <td class="line-fields">${t.schema.fields.length} fields</td>
             <td>
                 <div class="line-item-actions">
@@ -401,20 +402,20 @@ export class TemplateLibraryView {
 
             <div class="card-content">
                 <div class="card-title-row">
-                    <span class="card-icon">${t.icon || '🏷️'}</span>
-                    <h3 class="card-title">${t.title}</h3>
+                    <span class="card-icon">${esc(t.icon || '🏷️')}</span>
+                    <h3 class="card-title">${esc(t.title)}</h3>
                 </div>
 
-                <p class="card-desc">${t.description}</p>
+                <p class="card-desc">${esc(t.description)}</p>
 
                 <div class="card-meta-row">
-                    <span class="meta-tag">📐 ${t.layout.width} × ${t.layout.height} ${t.layout.unit}</span>
-                    <span class="meta-tag">🏷️ ${t.schema.fields.length} Dynamic Fields</span>
+                    <span class="meta-tag">📐 ${esc(String(t.layout.width))} × ${esc(String(t.layout.height))} ${esc(t.layout.unit)}</span>
+                    <span class="meta-tag">🏷️ ${esc(String(t.schema.fields.length))} Dynamic Fields</span>
                 </div>
 
                 <div class="card-fields-chips">
-                    ${t.schema.fields.slice(0, 4).map(f => `<span class="field-chip">{{${f.name}}}</span>`).join('')}
-                    ${t.schema.fields.length > 4 ? `<span class="field-chip-more">+${t.schema.fields.length - 4} more</span>` : ''}
+                    ${t.schema.fields.slice(0, 4).map(f => `<span class="field-chip">{{${esc(f.name)}}}</span>`).join('')}
+                    ${t.schema.fields.length > 4 ? `<span class="field-chip-more">+${esc(String(t.schema.fields.length - 4))} more</span>` : ''}
                 </div>
 
                 <div class="card-actions" style="grid-template-columns: ${canDesign ? '1fr 1fr' : '1fr'};">
@@ -698,16 +699,16 @@ export class TemplateLibraryView {
     private renderViewPage() {
         const t = this.viewingTemplate!;
         const canDesign = this.activeRole.roleId === 'admin' || this.activeRole.roleId.startsWith('plant-');
-        const fields = t.schema.fields.map(f => `<li><code>{{${f.name}}}</code> — ${f.label}</li>`).join('');
-        const size = `${t.layout.width} × ${t.layout.height} ${t.layout.unit}`;
+        const fields = t.schema.fields.map(f => `<li><code>{{${esc(f.name)}}}</code> — ${esc(f.label)}</li>`).join('');
+        const size = `${esc(String(t.layout.width))} × ${esc(String(t.layout.height))} ${esc(t.layout.unit)}`;
 
         this.container.innerHTML = `
         <div class="template-library-container template-page">
             <div class="template-page-header">
                 <button class="btn btn-outline btn-sm" data-action="back-to-list">← Back to Templates</button>
                 <div>
-                    <h3 class="library-main-title">${t.icon || '🏷️'} ${t.title}</h3>
-                    <p style="font-size: 0.8125rem; color: var(--ink-muted); margin: 4px 0 0 0;">${t.description}</p>
+                    <h3 class="library-main-title">${esc(t.icon || '🏷️')} ${esc(t.title)}</h3>
+                    <p style="font-size: 0.8125rem; color: var(--ink-muted); margin: 4px 0 0 0;">${esc(t.description)}</p>
                 </div>
             </div>
 

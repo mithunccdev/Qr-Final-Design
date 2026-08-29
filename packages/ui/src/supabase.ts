@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { ProductRecord, SerializedUnit } from './dashboard/product-manager';
 import type { BatchRecord } from './dashboard/batch-manager';
 import type { EmployeeRecord } from './dashboard/employee-manager';
@@ -17,7 +17,8 @@ export interface UserProfile {
     allowedPlants: string[];             // e.g. ['KSPL'] or ['All'] or ['KSPL','KGPL']
     isActive: boolean;
     createdAt: string;
-    password?: string; // used for local demo / display
+    password?: string;      // legacy plaintext — only used for back-compat reads
+    passwordHash?: string;  // SHA-256 hash, used for online/local login
 }
 
 export interface SupabaseConfig {
@@ -36,24 +37,19 @@ const STORAGE_KEY_CONFIG = 'qrlayout_supabase_config';
 const STORAGE_KEY_PROFILES = 'qrlayout_user_profiles';
 const STORAGE_KEY_CURRENT_USER = 'qrlayout_active_user_session';
 
-const DEFAULT_USERS: UserProfile[] = [
-    {
-        id: 'usr-admin-01',
-        email: 'mithunaes@gmail.com',
-        fullName: 'Mithun (Administrator)',
-        role: 'admin',
-        allowedTemplateCategories: ['All'],
-        allowedPlants: ['All'],
-        isActive: true,
-        password: '654321',
-        createdAt: '2026-01-01T00:00:00.000Z'
-    }
-];
+// No baked-in accounts. The first Supabase user to register becomes the
+// bootstrap admin (see schema.sql -> handle_new_user). Every other signup is
+// 'user', and roles can only be granted by an admin through the secure
+// `upsert_user_profile` RPC. NO credentials are ever embedded in source.
+const DEFAULT_USERS: UserProfile[] = [];
 
 export class SupabaseService {
     private client: SupabaseClient | null = null;
     private config: SupabaseConfig;
     private currentUserProfile: UserProfile | null = null;
+    // Kept ONLY in-memory for re-authenticating the operator after a signUp
+    // (which switches the client session). Never persisted to storage.
+    private sessionPassword: string | null = null;
 
     constructor() {
         this.config = this.loadConfig();
@@ -161,11 +157,14 @@ export class SupabaseService {
         if (this.client && this.config.enabled) {
             let signIn = await this.trySignIn(cleanEmail, password);
 
-            // 2. If the account doesn't exist yet, auto-create the bootstrap
-            //    admin account (idempotent) and sign in again.
-            if (!signIn.profile && this.isDefaultAdmin(cleanEmail)) {
-                await this.ensureBootstrapAdmin(cleanEmail, password);
-                signIn = await this.trySignIn(cleanEmail, password);
+            // 2. Bootstrap: only when the database has NO profiles yet, the
+            //    first person to sign in can register their own admin account.
+            //    Accounts are never created for a hardcoded address.
+            if (!signIn.profile && signIn.reason && /invalid login credentials|invalid_grant|user not found|user already registered|email not confirmed/i.test(signIn.reason)) {
+                if (await this.needsBootstrap()) {
+                    await this.createBootstrapAdmin(cleanEmail, password);
+                    signIn = await this.trySignIn(cleanEmail, password);
+                }
             }
 
             if (signIn.profile) {
@@ -190,25 +189,69 @@ export class SupabaseService {
             if (!found.isActive) {
                 return { success: false, message: 'Your account has been deactivated. Please contact an Administrator.' };
             }
-            if (found.password && found.password !== password) {
+            const ok = await this.verifyPassword(password, found);
+            if (!ok) {
                 return { success: false, message: 'Invalid password. Please check your credentials.' };
             }
+            this.sessionPassword = password;
             this.setCurrentUserSession(found);
             return { success: true, profile: found };
-        }
-
-        // Primary Admin login check (local only)
-        if (cleanEmail === DEFAULT_USERS[0].email && password === DEFAULT_USERS[0].password) {
-            const adminUser = DEFAULT_USERS[0];
-            this.setCurrentUserSession(adminUser);
-            return { success: true, profile: adminUser };
         }
 
         return { success: false, message: 'Invalid email or password. Please check your credentials.' };
     }
 
-    private isDefaultAdmin(email: string): boolean {
-        return email === DEFAULT_USERS[0].email;
+    /** True when the user_profiles table is empty (used once for first-admin bootstrap). */
+    private async needsBootstrap(): Promise<boolean> {
+        if (!this.client || !this.config.enabled) return false;
+        try {
+            const { data, error } = await this.client.rpc('is_bootstrap_needed');
+            if (error) return false;
+            return data === true;
+        } catch {
+            return false;
+        }
+    }
+
+    /** Registers the first account; the signup trigger promotes it to admin. */
+    private async createBootstrapAdmin(email: string, password: string): Promise<void> {
+        try {
+            await this.client!.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: { full_name: email.split('@')[0], role: 'admin' }
+                }
+            });
+        } catch (err: any) {
+            console.warn('Bootstrap admin signup error:', err?.message || err);
+        }
+    }
+
+    private async verifyPassword(password: string, profile: UserProfile): Promise<boolean> {
+        // New secure store: SHA-256 hash (never plaintext).
+        if (profile.passwordHash) {
+            return profile.passwordHash === (await this.hashPassword(password));
+        }
+        // Backward-compat: leftover plaintext entries from earlier versions.
+        if (profile.password !== undefined) {
+            return profile.password === password;
+        }
+        // No stored credential -> cannot verify locally.
+        return false;
+    }
+
+    private async hashPassword(password: string): Promise<string> {
+        try {
+            if (typeof crypto !== 'undefined' && crypto.subtle) {
+                const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password));
+                return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+        } catch { /* fall through to legacy string */ }
+        // Non-secure fallback (no WebCrypto available in this environment).
+        let h = 0;
+        for (let i = 0; i < password.length; i++) { h = (h << 5) - h + password.charCodeAt(i); h |= 0; }
+        return 'x' + (h >>> 0).toString(16);
     }
 
     private async trySignIn(email: string, password: string): Promise<{ ok: boolean; profile?: UserProfile; reason?: string }> {
@@ -218,6 +261,7 @@ export class SupabaseService {
                 return { ok: false, reason: error.message };
             }
             if (data?.user) {
+                this.sessionPassword = password;
                 const profile = await this.resolveProfileForAuthUser(data.user, email);
                 this.setCurrentUserSession(profile);
                 return { ok: true, profile };
@@ -226,26 +270,6 @@ export class SupabaseService {
         } catch (err: any) {
             console.warn('Supabase auth network error:', err?.message || err);
             return { ok: false, reason: err?.message || 'network error' };
-        }
-    }
-
-    /** Creates the bootstrap admin auth account if it does not exist. Idempotent. */
-    private async ensureBootstrapAdmin(email: string, password: string): Promise<void> {
-        try {
-            const admin = DEFAULT_USERS[0];
-            const { error } = await this.client!.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: { full_name: admin.fullName, role: admin.role }
-                }
-            });
-            // "User already registered" is fine — the account exists, signIn will handle it.
-            if (error && !/already registered/i.test(error.message)) {
-                console.warn('Bootstrap admin signup notice:', error.message);
-            }
-        } catch (err: any) {
-            console.warn('Bootstrap admin signup error:', err?.message || err);
         }
     }
 
@@ -274,7 +298,7 @@ export class SupabaseService {
             id: user.id,
             email,
             fullName: meta.full_name || email.split('@')[0],
-            role: (meta.role as UserRole) || (email.includes('admin') ? 'admin' : 'user'),
+            role: 'user',
             allowedTemplateCategories: ['All'],
             allowedPlants: ['All'],
             isActive: true,
@@ -282,17 +306,7 @@ export class SupabaseService {
         };
 
         try {
-            await this.client!.from('user_profiles').upsert({
-                id: profile.id,
-                email: profile.email,
-                full_name: profile.fullName,
-                role: profile.role,
-                allowed_template_categories: profile.allowedTemplateCategories,
-                allowed_plants: profile.allowedPlants || ['All'],
-                is_active: profile.isActive,
-                created_at: profile.createdAt,
-                updated_at: new Date().toISOString()
-            });
+            await this.client!.rpc('upsert_user_profile', { p: this.toProfilePayload(profile) });
         } catch (e: any) {
             console.warn('resolveProfile user_profiles upsert notice:', e?.message || e);
         }
@@ -322,7 +336,22 @@ export class SupabaseService {
                 console.warn('Supabase signout notice', e);
             }
         }
+        this.sessionPassword = null;
         this.setCurrentUserSession(null);
+    }
+
+    /** Convert a UserProfile into the JSON payload expected by upsert_user_profile. */
+    private toProfilePayload(profile: UserProfile): Record<string, any> {
+        return {
+            id: profile.id,
+            email: profile.email,
+            full_name: profile.fullName,
+            role: profile.role,
+            allowed_template_categories: profile.allowedTemplateCategories || ['All'],
+            allowed_plants: profile.allowedPlants || ['All'],
+            is_active: profile.isActive,
+            created_at: profile.createdAt
+        };
     }
 
     // ════════════════════════════════════════════════════════════════════════════
@@ -402,7 +431,7 @@ export class SupabaseService {
             id: id || `usr-${Date.now()}`,
             email: email,
             fullName: email.split('@')[0],
-            role: email.includes('admin') ? 'admin' : (email.includes('designer') ? 'designer' : 'user'),
+            role: 'user',
             allowedTemplateCategories: ['All'],
             allowedPlants: ['All'],
             isActive: true,
@@ -445,39 +474,32 @@ export class SupabaseService {
             }
         }
 
-        // 2. Save profile in Supabase table (must exist — run packages/ui/supabase/schema.sql)
-        if (online) {
-            try {
-                const { error } = await this.client!.from('user_profiles').upsert({
-                    id: profile.id,
-                    email: profile.email,
-                    full_name: profile.fullName,
-                    role: profile.role,
-                    allowed_template_categories: profile.allowedTemplateCategories,
-                    allowed_plants: profile.allowedPlants || ['All'],
-                    is_active: profile.isActive,
-                    created_at: profile.createdAt,
-                    updated_at: new Date().toISOString()
-                });
-
-                if (error) {
-                    return { success: false, message: `Profile save failed: ${error.message}. Run the user_profiles SQL migration.` };
-                }
-            } catch (e: any) {
-                console.warn('Supabase user_profiles upsert error:', e?.message || e);
-                return { success: false, message: `Profile save failed: ${e?.message || e}. Run the user_profiles SQL migration.` };
-            }
-        }
-
-        // 3. Save locally
+        // 2. Save locally (password stored as a SHA-256 hash — never plaintext)
         const profiles = this.getLocalProfiles().filter(p => p.id !== profile.id && p.email !== profile.email);
-        profiles.unshift({ ...profile, password });
+        const storedProfile: UserProfile = { ...profile };
+        if (password) {
+            storedProfile.passwordHash = await this.hashPassword(password);
+        }
+        delete storedProfile.password;
+        profiles.unshift(storedProfile);
         this.saveLocalProfiles(profiles);
 
         // 4. The signUp step switched the client session to the newly-created user.
-        //    Restore the current operator's Supabase session so subsequent actions
-        //    still run as them (e.g. listing/managing other users).
+        //    Restore the current operator's Supabase session so the profile row can
+        //    be written (and the intended role applied) as the ADMIN.
         await this.restoreCurrentSession();
+
+        // 5. Persist the profile row via the admin-gated RPC so the requested role sticks.
+        if (online) {
+            try {
+                const { error } = await this.client!.rpc('upsert_user_profile', { p: this.toProfilePayload(profile) });
+                if (error) {
+                    console.warn('Supabase createUser profile RPC error:', error.message);
+                }
+            } catch (e: any) {
+                console.warn('Supabase createUser profile RPC error:', e?.message || e);
+            }
+        }
 
         return {
             success: true,
@@ -489,8 +511,7 @@ export class SupabaseService {
     private async restoreCurrentSession(): Promise<void> {
         const current = this.currentUserProfile;
         if (!current || !this.client || !this.config.enabled) return;
-        const storedPassword = this.getLocalProfiles().find(p => p.id === current.id)?.password
-            || this.getLocalProfiles().find(p => p.email === current.email)?.password;
+        const storedPassword = this.sessionPassword;
         if (!storedPassword) return;
         try {
             await this.client.auth.signInWithPassword({
@@ -505,16 +526,8 @@ export class SupabaseService {
     public async updateUser(profile: UserProfile): Promise<boolean> {
         if (this.client && this.config.enabled) {
             try {
-                await this.client.from('user_profiles').upsert({
-                    id: profile.id,
-                    email: profile.email,
-                    full_name: profile.fullName,
-                    role: profile.role,
-                    allowed_template_categories: profile.allowedTemplateCategories,
-                    allowed_plants: profile.allowedPlants || ['All'],
-                    is_active: profile.isActive,
-                    updated_at: new Date().toISOString()
-                });
+                const { error } = await this.client.rpc('upsert_user_profile', { p: this.toProfilePayload(profile) });
+                if (error) console.warn('Supabase updateUser RPC error:', error.message);
             } catch (e) {}
         }
 
@@ -1110,6 +1123,51 @@ export class SupabaseService {
             const { error } = await this.client.from('master_data').delete().eq('id', `${type}:${code}`);
             return !error;
         } catch (e) {
+            return false;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // LOGIC RULES SYNC (Serial Number & Batch Number formats — shared globally)
+    // ════════════════════════════════════════════════════════════════════════════
+    public async fetchLogicRules(type: 'serial' | 'batch'): Promise<any[] | null> {
+        if (!this.client || !this.config.enabled) return null;
+        try {
+            const { data, error } = await this.client
+                .from('logic_rules')
+                .select('rules')
+                .eq('type', type)
+                .maybeSingle();
+            if (error) {
+                console.warn('Supabase fetchLogicRules error:', error.message);
+                return null;
+            }
+            if (!data) return null;
+            const rules = data.rules;
+            return Array.isArray(rules) && rules.length > 0 ? rules : null;
+        } catch (e) {
+            console.error('Error fetching logic rules', e);
+            return null;
+        }
+    }
+
+    public async saveLogicRules(type: 'serial' | 'batch', rules: any[]): Promise<boolean> {
+        if (!this.client || !this.config.enabled || rules.length === 0) return false;
+        const by = this.currentUserProfile?.email || this.currentUserProfile?.id || null;
+        try {
+            const { error } = await this.client.from('logic_rules').upsert({
+                type,
+                rules,
+                updated_by: by,
+                updated_at: new Date().toISOString()
+            });
+            if (error) {
+                console.warn('Supabase saveLogicRules error:', error.message);
+                return false;
+            }
+            return true;
+        } catch (e: any) {
+            console.warn('Supabase saveLogicRules error:', e?.message || e);
             return false;
         }
     }

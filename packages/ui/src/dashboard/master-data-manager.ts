@@ -20,9 +20,14 @@ import {
     generateBatchNumberPreview,
     getMasterCodesMapping,
     DEFAULT_SERIAL_RULES,
-    DEFAULT_BATCH_RULES
+    DEFAULT_BATCH_RULES,
+    persistSerialLogicRulesToDb,
+    persistBatchLogicRulesToDb,
+    hydrateSerialLogicRulesFromDb,
+    hydrateBatchLogicRulesFromDb
 } from './serial-batch-logic';
 import { supabaseService } from '../supabase';
+import { esc } from '../escape';
 
 type ViewMode = 'list' | 'create' | 'edit';
 
@@ -139,8 +144,8 @@ export class MasterDataManagerView {
         <div class="entity-manager-root">
             <div class="master-type-nav">
                 ${MASTER_DATA_TYPES.map(t => `
-                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${t.type}">
-                        <span>${t.icon}</span> <span>${t.label}</span>
+                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${esc(t.type)}">
+                        <span>${esc(t.icon)}</span> <span>${esc(t.label)}</span>
                     </button>
                 `).join('')}
             </div>
@@ -148,8 +153,8 @@ export class MasterDataManagerView {
             <div class="manager-card-panel">
                 <div class="panel-header-row">
                     <div>
-                        <h2 class="panel-heading">${def.icon} ${def.label}</h2>
-                        <p class="panel-subheading">${this.getSubheading()}</p>
+                        <h2 class="panel-heading">${esc(def.icon)} ${esc(def.label)}</h2>
+                        <p class="panel-subheading">${esc(this.getSubheading())}</p>
                     </div>
                     <button class="btn btn-primary" id="btn-add-master-entry">
                         ➕ Add ${def.label.replace(/s$/, '')}
@@ -178,13 +183,13 @@ export class MasterDataManagerView {
                                 </tr>
                             ` : records.map(r => `
                                 <tr>
-                                    <td><span class="code-badge-pill" style="font-weight:700;font-family:monospace;">${r.code}</span></td>
-                                    <td style="font-weight:600;">${r.label}</td>
-                                    ${hasPlantCode ? `<td><span class="nav-item-badge badge-neutral" style="font-family:monospace;font-weight:700;">${r.plantCode || '—'}</span></td>` : ''}
-                                    ${this.isFinancialYear() ? `<td><span class="nav-item-badge badge-indigo" style="font-size:0.75rem;">${r.fyStructure || 'April to March'}</span></td>` : ''}
+                                    <td><span class="code-badge-pill" style="font-weight:700;font-family:monospace;">${esc(r.code)}</span></td>
+                                    <td style="font-weight:600;">${esc(r.label)}</td>
+                                    ${hasPlantCode ? `<td><span class="nav-item-badge badge-neutral" style="font-family:monospace;font-weight:700;">${esc(r.plantCode || '—')}</span></td>` : ''}
+                                    ${this.isFinancialYear() ? `<td><span class="nav-item-badge badge-indigo" style="font-size:0.75rem;">${esc(r.fyStructure || 'April to March')}</span></td>` : ''}
                                     ${hasSerialBatch ? `
                                         <td>
-                                            ${r.serialCode ? `<span class="nav-item-badge badge-emerald" style="font-family:monospace;font-weight:700;">${r.serialCode}</span>` : '<span style="color:var(--text-secondary);font-size:0.75rem;">—</span>'}
+                                            ${r.serialCode ? `<span class="nav-item-badge badge-emerald" style="font-family:monospace;font-weight:700;">${esc(r.serialCode)}</span>` : '<span style="color:var(--text-secondary);font-size:0.75rem;">—</span>'}
                                         </td>
                                         <td>
                                             ${r.batchCode ? `<span class="nav-item-badge badge-cyan" style="font-family:monospace;font-weight:700;">${r.batchCode}</span>` : '<span style="color:var(--text-secondary);font-size:0.75rem;">—</span>'}
@@ -258,8 +263,8 @@ export class MasterDataManagerView {
         <div class="entity-manager-root">
             <div class="master-type-nav">
                 ${MASTER_DATA_TYPES.map(t => `
-                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${t.type}">
-                        <span>${t.icon}</span> <span>${t.label}</span>
+                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${esc(t.type)}">
+                        <span>${esc(t.icon)}</span> <span>${esc(t.label)}</span>
                     </button>
                 `).join('')}
             </div>
@@ -291,8 +296,8 @@ export class MasterDataManagerView {
                         🌐 All Plants (Global Default)
                     </button>
                     ${plants.map(p => `
-                        <button class="btn btn-sm ${this.selectedPlantForRule === p.code ? 'btn-primary' : 'btn-outline'} btn-serial-plant-tab" data-plant="${p.code}">
-                            🏭 ${p.label} (${p.serialCode || p.code})
+                        <button class="btn btn-sm ${this.selectedPlantForRule === p.code ? 'btn-primary' : 'btn-outline'} btn-serial-plant-tab" data-plant="${esc(p.code)}">
+                            🏭 ${esc(p.label)} (${esc(p.serialCode || p.code)})
                         </button>
                     `).join('')}
                 </div>
@@ -674,7 +679,8 @@ export class MasterDataManagerView {
             };
 
             saveSerialLogicRule(updatedRule);
-            alert(`✅ Serial Number Logic for ${this.selectedPlantForRule} saved successfully!`);
+            void persistSerialLogicRulesToDb();
+            alert(`✅ Serial Number Logic for ${this.selectedPlantForRule} saved successfully to the shared database!`);
         });
 
         // Reset
@@ -682,6 +688,7 @@ export class MasterDataManagerView {
             if (confirm('Reset to standard serial logic format?')) {
                 const def = DEFAULT_SERIAL_RULES.find(r => r.plant === this.selectedPlantForRule) || DEFAULT_SERIAL_RULES[0];
                 saveSerialLogicRule({ ...def, plant: this.selectedPlantForRule, id: `rule-serial-${this.selectedPlantForRule.toLowerCase()}` });
+                void persistSerialLogicRulesToDb();
                 this.render();
             }
         });
@@ -711,8 +718,8 @@ export class MasterDataManagerView {
         <div class="entity-manager-root">
             <div class="master-type-nav">
                 ${MASTER_DATA_TYPES.map(t => `
-                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${t.type}">
-                        <span>${t.icon}</span> <span>${t.label}</span>
+                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${esc(t.type)}">
+                        <span>${esc(t.icon)}</span> <span>${esc(t.label)}</span>
                     </button>
                 `).join('')}
             </div>
@@ -744,8 +751,8 @@ export class MasterDataManagerView {
                         🌐 All Plants (Global Default)
                     </button>
                     ${plants.map(p => `
-                        <button class="btn btn-sm ${this.selectedPlantForRule === p.code ? 'btn-primary' : 'btn-outline'} btn-batch-plant-tab" data-plant="${p.code}">
-                            🏭 ${p.label} (${p.batchCode || p.code})
+                        <button class="btn btn-sm ${this.selectedPlantForRule === p.code ? 'btn-primary' : 'btn-outline'} btn-batch-plant-tab" data-plant="${esc(p.code)}">
+                            🏭 ${esc(p.label)} (${esc(p.batchCode || p.code)})
                         </button>
                     `).join('')}
                 </div>
@@ -1051,13 +1058,15 @@ export class MasterDataManagerView {
             };
 
             saveBatchLogicRule(updatedRule);
-            alert(`✅ Batch Number Logic for ${this.selectedPlantForRule} saved successfully!`);
+            void persistBatchLogicRulesToDb();
+            alert(`✅ Batch Number Logic for ${this.selectedPlantForRule} saved successfully to the shared database!`);
         });
 
         this.container.querySelector('#btn-reset-batch-logic')?.addEventListener('click', () => {
             if (confirm('Reset to default batch logic format?')) {
                 const def = DEFAULT_BATCH_RULES.find(r => r.plant === this.selectedPlantForRule) || DEFAULT_BATCH_RULES[0];
                 saveBatchLogicRule({ ...def, plant: this.selectedPlantForRule, id: `rule-batch-${this.selectedPlantForRule.toLowerCase()}` });
+                void persistBatchLogicRulesToDb();
                 this.render();
             }
         });
@@ -1085,8 +1094,8 @@ export class MasterDataManagerView {
         <div class="entity-manager-root">
             <div class="master-type-nav">
                 ${MASTER_DATA_TYPES.map(t => `
-                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${t.type}">
-                        <span>${t.icon}</span> <span>${t.label}</span>
+                    <button class="master-type-tab ${this.activeType === t.type ? 'active' : ''}" data-type="${esc(t.type)}">
+                        <span>${esc(t.icon)}</span> <span>${esc(t.label)}</span>
                     </button>
                 `).join('')}
             </div>
@@ -1124,7 +1133,7 @@ export class MasterDataManagerView {
                             <label style="font-weight:600;">Mapped Plant Code *</label>
                             <select id="m-plantcode" class="filter-dropdown" style="width:100%;">
                                 <option value="">Select Associated Plant...</option>
-                                ${plants.map(p => `<option value="${p.plantCode || p.code}" ${option?.plantCode === (p.plantCode || p.code) ? 'selected' : ''}>${p.label} (Plant ${p.plantCode || p.code})</option>`).join('')}
+                                ${plants.map(p => `<option value="${esc(p.plantCode || p.code)}" ${option?.plantCode === (p.plantCode || p.code) ? 'selected' : ''}>${esc(p.label)} (Plant ${esc(p.plantCode || p.code)})</option>`).join('')}
                             </select>
                         </div>
                     ` : ''}

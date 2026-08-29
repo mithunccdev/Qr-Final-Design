@@ -3,6 +3,7 @@ import type { EntitySchema } from '../types';
 import { PREBUILT_TEMPLATES, PrebuiltTemplate } from './templates-data';
 import { ProductRecord, SerializedUnit } from './product-manager';
 import { EmployeeRecord } from './employee-manager';
+import { esc } from '../escape';
 
 export interface OverviewDashboardOptions {
     container: HTMLElement;
@@ -214,11 +215,11 @@ export class OverviewDashboardView {
                             if (this.userRole === 'admin' || this.userRole === 'designer') return true;
                             return this.allowedCategories.includes('All') || this.allowedCategories.includes(tpl.category);
                         }).slice(0, 4).map(tpl => `
-                            <div class="ov-tpl-row" data-id="${tpl.id}">
-                                <div class="ov-tpl-row-icon">${tpl.icon}</div>
+                            <div class="ov-tpl-row" data-id="${esc(tpl.id)}">
+                                <div class="ov-tpl-row-icon">${esc(tpl.icon)}</div>
                                 <div class="ov-tpl-row-info">
-                                    <div class="ov-tpl-row-name">${tpl.title}</div>
-                                    <div class="ov-tpl-row-meta">${tpl.layout.width}×${tpl.layout.height} ${tpl.layout.unit} · ${tpl.schema.fields.length} fields</div>
+                                    <div class="ov-tpl-row-name">${esc(tpl.title)}</div>
+                                    <div class="ov-tpl-row-meta">${esc(String(tpl.layout.width))}×${esc(String(tpl.layout.height))} ${esc(tpl.layout.unit)} · ${esc(String(tpl.schema.fields.length))} fields</div>
                                 </div>
                                 <div class="ov-tpl-row-actions">
                                     ${(this.userRole === 'admin' || this.userRole === 'designer') ? `

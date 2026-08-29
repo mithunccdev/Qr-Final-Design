@@ -1,6 +1,7 @@
 import { supabaseService, UserProfile, UserRole } from '../supabase';
 import { getAssignableTemplateCategories } from './templates-data';
 import { getMasterData } from './master-data';
+import { esc } from '../escape';
 
 export class UserManagerView {
     private container: HTMLElement;
@@ -154,22 +155,22 @@ export class UserManagerView {
         const isAllCategories = user.allowedTemplateCategories.includes('All') || user.role === 'admin' || user.role === 'designer';
         const categoriesDisplay = isAllCategories
             ? '<span class="var-pill">All Templates (Full Access)</span>'
-            : user.allowedTemplateCategories.map(cat => `<span class="var-pill">🏷️ ${cat}</span>`).join(' ');
+            : user.allowedTemplateCategories.map(cat => `<span class="var-pill">🏷️ ${esc(cat)}</span>`).join(' ');
 
         const userPlants = user.allowedPlants || ['All'];
         const isAllPlants = userPlants.includes('All') || user.role === 'admin';
         const plantsDisplay = isAllPlants
             ? '<span class="var-pill" style="background: var(--color-emerald-100, #d1fae5); color: var(--color-emerald-700, #065f46);">🏭 All Plants</span>'
-            : userPlants.map(p => `<span class="var-pill" style="background: var(--color-blue-100, #dbeafe); color: var(--color-blue-700, #1d4ed8);">🏭 ${p}</span>`).join(' ');
+            : userPlants.map(p => `<span class="var-pill" style="background: var(--color-blue-100, #dbeafe); color: var(--color-blue-700, #1d4ed8);">🏭 ${esc(p)}</span>`).join(' ');
 
         return `
         <tr class="table-row-item">
             <td>
                 <div class="user-cell-wrap">
-                    <div class="user-avatar-initials">${initials}</div>
+                    <div class="user-avatar-initials">${esc(initials)}</div>
                     <div>
-                        <div class="item-title-bold">${user.fullName}</div>
-                        <div class="item-desc-sub">${user.email}</div>
+                        <div class="item-title-bold">${esc(user.fullName)}</div>
+                        <div class="item-desc-sub">${esc(user.email)}</div>
                     </div>
                 </div>
             </td>
@@ -193,7 +194,7 @@ export class UserManagerView {
                     <button class="btn btn-outline btn-xs btn-edit-user" data-id="${user.id}" title="Edit User & Permissions">
                         ✏️ Edit
                     </button>
-                    ${user.email !== 'mithunaes@gmail.com' ? `
+                    ${this.canManageRow(user) ? `
                         <button class="btn btn-outline btn-xs btn-toggle-status" data-id="${user.id}" title="${user.isActive ? 'Deactivate' : 'Activate'}">
                             ${user.isActive ? '⏸️ Suspend' : '▶️ Activate'}
                         </button>
@@ -205,6 +206,19 @@ export class UserManagerView {
             </td>
         </tr>
         `;
+    }
+
+    /** Prevent an admin from locking themselves / the system out.
+     *  Guards against editing, suspending, or deleting: (a) your own account,
+     *  and (b) the last remaining active admin. */
+    private canManageRow(user: UserProfile): boolean {
+        const current = supabaseService.getCurrentUser();
+        if (current && user.id === current.id) return false;
+        if (user.role === 'admin' && user.isActive) {
+            const otherActiveAdmin = this.users.some(u => u.id !== user.id && u.role === 'admin' && u.isActive);
+            if (!otherActiveAdmin) return false;
+        }
+        return true;
     }
 
     private bindEvents() {
@@ -331,8 +345,8 @@ export class UserManagerView {
                             </label>
                             ${availablePlants.map(p => `
                                 <label class="checkbox-item">
-                                    <input type="checkbox" class="plant-checkbox" value="${p.code}" ${currentPlants.includes(p.code) || currentPlants.includes('All') ? 'checked' : ''} />
-                                    <span>🏭 ${p.label}${p.plantCode ? ` (${p.plantCode})` : ''}</span>
+                                    <input type="checkbox" class="plant-checkbox" value="${esc(p.code)}" ${currentPlants.includes(p.code) || currentPlants.includes('All') ? 'checked' : ''} />
+                                    <span>🏭 ${esc(p.label)}${p.plantCode ? ` (${esc(p.plantCode)})` : ''}</span>
                                 </label>
                             `).join('')}
                         </div>
@@ -354,8 +368,8 @@ export class UserManagerView {
                             </label>
                             ${getAssignableTemplateCategories().map(cat => `
                                 <label class="checkbox-item">
-                                    <input type="checkbox" class="cat-checkbox" value="${cat.id}" ${currentCategories.includes(cat.id) || currentCategories.includes('All') ? 'checked' : ''} />
-                                    <span>${cat.icon} ${cat.label}</span>
+                                    <input type="checkbox" class="cat-checkbox" value="${esc(cat.id)}" ${currentCategories.includes(cat.id) || currentCategories.includes('All') ? 'checked' : ''} />
+                                    <span>${esc(cat.icon)} ${esc(cat.label)}</span>
                                 </label>
                             `).join('')}
                         </div>

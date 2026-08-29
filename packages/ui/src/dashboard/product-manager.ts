@@ -3,6 +3,7 @@ import type { EntitySchema } from '../types';
 import { PREBUILT_TEMPLATES } from './templates-data';
 import { supabaseService } from '../supabase';
 import { getMasterData, getPlantByCode } from './master-data';
+import { esc } from '../escape';
 
 export interface ProductVariable {
     key: string;
@@ -386,14 +387,14 @@ export class ProductManagerView {
             return `
             <tr class="product-table-row ${isSelected ? 'row-active' : ''}" data-id="${p.id}">
                 <td class="td-product-code">
-                    <span class="product-code-text font-mono">${p.sku}</span>
+                    <span class="product-code-text font-mono">${esc(p.sku)}</span>
                 </td>
                 <td class="td-product-name">
-                    <div class="product-name-text">${p.title}</div>
-                    ${p.description ? `<div class="product-sub-desc">${p.description}</div>` : ''}
+                    <div class="product-name-text">${esc(p.title)}</div>
+                    ${p.description ? `<div class="product-sub-desc">${esc(p.description)}</div>` : ''}
                 </td>
                 <td class="td-category">
-                    <span class="product-category-text">${p.category.toLowerCase()}</span>
+                    <span class="product-category-text">${esc(p.category.toLowerCase())}</span>
                 </td>
                 <td class="td-plant">
                     <span class="plant-badge plant-${plantCode.toLowerCase()}">${plantCode}</span>
@@ -452,7 +453,7 @@ export class ProductManagerView {
                 <div>
                     <div class="drawer-back-row">
                         <button class="btn btn-icon btn-outline btn-close-drawer" title="Close Serial View">✕</button>
-                        <h3 class="panel-heading">Tracking Serials: ${product.title}</h3>
+                        <h3 class="panel-heading">Tracking Serials: ${esc(product.title)}</h3>
                     </div>
                     <p class="panel-subheading">Product Code: ${product.sku} | Plant: ${product.plant || 'KSPL'} | Color: ${product.color || 'CP'} | Warranty: ${product.warranty || '5 Years'} | DP: ${formatINR(product.dp)} | MRP: ${formatINR(product.mrp)}</p>
                 </div>
@@ -492,7 +493,7 @@ export class ProductManagerView {
                         <div class="serial-card-left">
                             <input type="checkbox" class="serial-check-box" data-id="${s.id}" ${isChecked ? 'checked' : ''} />
                             <div>
-                                <div class="serial-code-text">🏷️ ${s.serialNumber}</div>
+                                <div class="serial-code-text">🏷️ ${esc(s.serialNumber)}</div>
                                 <div class="serial-meta-sub">
                                     <span>Created: ${new Date(s.createdAt).toLocaleDateString()}</span>
                                     <span>•</span>
@@ -864,9 +865,9 @@ export class ProductManagerView {
                         <div id="page-vars-list" class="vars-inputs-list">
                             ${initialVars.map((v, i) => `
                                 <div class="var-input-row" data-index="${i}">
-                                    <input type="text" class="input-var-key" placeholder="Key (e.g. batchNo)" value="${v.key}" required />
-                                    <input type="text" class="input-var-label" placeholder="Display Label (e.g. Batch / Lot #)" value="${v.label}" required />
-                                    <input type="text" class="input-var-default" placeholder="Default Value" value="${v.defaultValue || ''}" />
+                                    <input type="text" class="input-var-key" placeholder="Key (e.g. batchNo)" value="${esc(v.key)}" required />
+                                    <input type="text" class="input-var-label" placeholder="Display Label (e.g. Batch / Lot #)" value="${esc(v.label)}" required />
+                                    <input type="text" class="input-var-default" placeholder="Default Value" value="${esc(v.defaultValue || '')}" />
                                     <button type="button" class="btn btn-icon btn-sm btn-remove-var" title="Remove variable">✕</button>
                                 </div>
                             `).join('')}
@@ -1368,10 +1369,10 @@ export class ProductManagerView {
             return `
             <tr>
                 <td>${idx + 1}</td>
-                <td><strong class="font-mono" style="color: var(--accent);">${p.sku}</strong></td>
-                <td>${p.title}</td>
-                <td><span class="category-chip" style="font-size: 0.65rem;">${p.category}</span></td>
-                <td><span class="plant-badge plant-${(p.plant || 'KSPL').toLowerCase()}" style="font-size: 0.65rem;">${p.plant || 'KSPL'}</span></td>
+                <td><strong class="font-mono" style="color: var(--accent);">${esc(p.sku)}</strong></td>
+                <td>${esc(p.title)}</td>
+                <td><span class="category-chip" style="font-size: 0.65rem;">${esc(p.category)}</span></td>
+                <td><span class="plant-badge plant-${(p.plant || 'KSPL').toLowerCase()}" style="font-size: 0.65rem;">${esc(p.plant || 'KSPL')}</span></td>
                 <td><span class="color-badge" style="font-size: 0.65rem;">${p.color || 'CP'}</span></td>
                 <td><span class="warranty-badge" style="font-size: 0.65rem;">${p.warranty || '5 Years'}</span></td>
                 <td style="text-align: right;">${formatINR(p.dp)}</td>
@@ -1659,7 +1660,7 @@ export class ProductManagerView {
         <div class="studio-modal-backdrop">
             <div class="studio-modal-dialog">
                 <div class="modal-header">
-                    <h3 class="modal-title">⚡ Generate Serial Numbers for ${product.title}</h3>
+                    <h3 class="modal-title">⚡ Generate Serial Numbers for ${esc(product.title)}</h3>
                     <button class="btn btn-icon btn-close-modal">✕</button>
                 </div>
 
@@ -1678,11 +1679,11 @@ export class ProductManagerView {
                         <div class="form-group col-span-2">
                             <label>Serial Number Format Preview</label>
                             <div class="serial-format-preview-box">
-                                <span class="format-tag">Prefix: ${product.serialPrefix}</span>
-                                <span class="format-tag">Plant: ${product.plant || 'KSPL'}</span>
-                                <span class="format-tag">Color: ${product.color || 'CP'}</span>
-                                <span class="format-tag">Padding: ${product.serialPadding || 5} digits</span>
-                                <span class="format-sample">Preview: ${product.serialPrefix}${nextSeq.toString().padStart(product.serialPadding || 5, '0')}</span>
+                                <span class="format-tag">Prefix: ${esc(product.serialPrefix)}</span>
+                                <span class="format-tag">Plant: ${esc(product.plant || 'KSPL')}</span>
+                                <span class="format-tag">Color: ${esc(product.color || 'CP')}</span>
+                                <span class="format-tag">Padding: ${esc(product.serialPadding || 5)} digits</span>
+                                <span class="format-sample">Preview: ${esc(product.serialPrefix)}${nextSeq.toString().padStart(product.serialPadding || 5, '0')}</span>
                             </div>
                         </div>
 
@@ -1692,8 +1693,8 @@ export class ProductManagerView {
                             <div class="vars-inputs-list" style="margin-top:8px;">
                                 ${product.variables.map(v => `
                                     <div class="form-group">
-                                        <label>${v.label} (<code>{{${v.key}}}</code>)</label>
-                                        <input type="text" class="input-batch-var" data-key="${v.key}" value="${v.defaultValue || ''}" />
+                                        <label>${esc(v.label)} (<code>{{${esc(v.key)}}}</code>)</label>
+                                        <input type="text" class="input-batch-var" data-key="${esc(v.key)}" value="${esc(v.defaultValue || '')}" />
                                     </div>
                                 `).join('')}
                             </div>

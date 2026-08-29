@@ -1,6 +1,19 @@
 -- ════════════════════════════════════════════════════════════════════════════
 -- QR Studio — Complete Supabase Database Schema & Migration Script
 -- Run this in: Supabase Dashboard → SQL Editor → New query → Run
+--
+-- SECURITY NOTES (applies to all tables):
+--  * Row Level Security (RLS) is ENABLED and locked down on every table.
+--  * Anonymous (anon) requests get NOTHING. Every query must be authenticated.
+--  * READ: any authenticated user can view operational data.
+--  * WRITE: only admins (and designers for templates) can modify data.
+--  * Users can only ever see / edit their OWN user_profiles row.
+--  * `handle_new_user` never trusts the role from sign-up metadata. The first
+--    registered user is bootstrapped as admin; every other self-signup is 'user'.
+--    Roles are only promotable through the admin-only `upsert_user_profile` RPC,
+--    which (for non-admins) refuses to escalate a role.
+--  * A BEFORE-UPDATE/INSERT trigger clamps role escalations so a user can never
+--    promote themselves to admin/designer through a direct table write.
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- Common updated_at trigger function
@@ -13,7 +26,115 @@ begin
   return new;
 end $$;
 
--- ── 1. USER PROFILES TABLE ──────────────────────────────────────────────────
+-- ════════════════════════════════════════════════════════════════════════════
+-- ROLE HELPERS (security definer so they bypass RLS when called from policies)
+-- ════════════════════════════════════════════════════════════════════════════
+
+create or replace function public.user_role(uid uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select role from public.user_profiles where id = uid), 'user');
+$$;
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select role = 'admin' and is_active from public.user_profiles where id = auth.uid()), false);
+$$;
+
+create or replace function public.is_designer()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select (role in ('admin','designer')) and is_active from public.user_profiles where id = auth.uid()), false);
+$$;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- USER PROFILE ROW (admin-only managed; self-guarded)
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- Guard: a user may only keep their own existing role; they can never escalate
+-- (and never grant admin/designer on insert). Admins are exempt.
+create or replace function public.guard_user_role()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  acting_is_admin boolean := public.is_admin();
+begin
+  if not acting_is_admin then
+    if tg_op = 'INSERT' then
+      new.role := 'user';
+    elsif tg_op = 'UPDATE' then
+      -- preserve the stored role; ignore any attempt to escalate
+      new.role := coalesce(old.role, 'user');
+      -- a user may not deactivate themselves
+      new.is_active := coalesce(old.is_active, true);
+    end if;
+  end if;
+  return new;
+end $$;
+
+-- Secure write path for user_profiles. Admin may set any role; a normal user
+-- may only create/refresh their OWN row and can never escalate their role.
+create or replace function public.upsert_user_profile(p jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id     uuid := (p->>'id')::uuid;
+  v_email  text := lower(coalesce(p->>'email', ''));
+  v_role   text := lower(coalesce(p->>'role', 'user'));
+  v_admin  boolean := public.is_admin();
+  v_self   boolean := auth.uid() = v_id;
+begin
+  if v_role not in ('admin','designer','user') then v_role := 'user'; end if;
+
+  if not v_admin and not v_self then
+    raise exception 'not allowed';
+  end if;
+
+  if not v_admin then
+    -- non-admin: can only touch their own row and cannot escalate authority
+    v_role := 'user';
+  end if;
+
+  insert into public.user_profiles
+    (id, email, full_name, role, allowed_template_categories, allowed_plants, is_active, created_at, updated_at)
+  values
+    (v_id, v_email, coalesce(p->>'full_name',''), v_role,
+     coalesce((select array_agg(x) from jsonb_array_elements_text(coalesce(p->'allowed_template_categories','[]')::jsonb) as x), array['All']),
+     coalesce((select array_agg(x) from jsonb_array_elements_text(coalesce(p->'allowed_plants','[]')::jsonb) as x), array['All']),
+     coalesce((p->>'is_active')::boolean, true),
+     coalesce((p->>'created_at')::timestamptz, now()),
+     now())
+  on conflict (id) do update set
+    full_name                   = excluded.full_name,
+    role                        = excluded.role,
+    allowed_template_categories = excluded.allowed_template_categories,
+    allowed_plants              = excluded.allowed_plants,
+    is_active                   = excluded.is_active,
+    updated_at                  = now();
+end $$;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 1. USER PROFILES TABLE
+-- ════════════════════════════════════════════════════════════════════════════
 create table if not exists public.user_profiles (
     id                          uuid primary key references auth.users (id) on delete cascade,
     email                       text not null unique,
@@ -26,7 +147,6 @@ create table if not exists public.user_profiles (
     updated_at                  timestamptz not null default now()
 );
 
--- Migration safety for existing user_profiles table
 alter table public.user_profiles add column if not exists full_name text not null default '';
 alter table public.user_profiles add column if not exists role text not null default 'user';
 alter table public.user_profiles add column if not exists allowed_template_categories text[] not null default array['All'];
@@ -38,13 +158,32 @@ create trigger trg_user_profiles_updated_at
   before update on public.user_profiles
   for each row execute function public.set_updated_at();
 
+drop trigger if exists trg_user_profiles_guard_role on public.user_profiles;
+create trigger trg_user_profiles_guard_role
+  before insert or update on public.user_profiles
+  for each row execute function public.guard_user_role();
+
 alter table public.user_profiles enable row level security;
 
-drop policy if exists "profiles_all_access" on public.user_profiles;
-create policy "profiles_all_access" on public.user_profiles
-  for all using (true) with check (true);
+drop policy if exists "user_profiles_select" on public.user_profiles;
+create policy "user_profiles_select" on public.user_profiles
+  for select using (auth.uid() = id or public.is_admin());
 
--- Auto-create a profile row on signup
+drop policy if exists "user_profiles_insert" on public.user_profiles;
+create policy "user_profiles_insert" on public.user_profiles
+  for insert with check (auth.uid() = id or public.is_admin());
+
+drop policy if exists "user_profiles_update" on public.user_profiles;
+create policy "user_profiles_update" on public.user_profiles
+  for update using (auth.uid() = id or public.is_admin())
+  with check (auth.uid() = id or public.is_admin());
+
+drop policy if exists "user_profiles_delete" on public.user_profiles;
+create policy "user_profiles_delete" on public.user_profiles
+  for delete using (public.is_admin());
+
+-- Auto-create a profile row on signup. The first registered user becomes the
+-- bootstrap admin; every subsequent self-signup is always forced to 'user'.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -57,7 +196,9 @@ begin
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'full_name', ''),
-    coalesce(new.raw_user_meta_data->>'role', 'user')
+    case when not exists (select 1 from public.user_profiles) then 'admin'
+         else 'user'
+    end
   )
   on conflict (id) do nothing;
   return new;
@@ -68,7 +209,9 @@ create trigger trg_on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- ── 2. TEMPLATES TABLE ──────────────────────────────────────────────────────
+-- ════════════════════════════════════════════════════════════════════════════
+-- 2. TEMPLATES TABLE (designers & admins may write)
+-- ════════════════════════════════════════════════════════════════════════════
 create table if not exists public.templates (
     id                   text primary key,
     title                text not null,
@@ -89,7 +232,6 @@ create table if not exists public.templates (
     updated_at           timestamptz not null default now()
 );
 
--- Migration safety for existing templates table
 alter table public.templates add column if not exists title text not null default 'Untitled';
 alter table public.templates add column if not exists description text default '';
 alter table public.templates add column if not exists category text;
@@ -112,11 +254,25 @@ create trigger trg_templates_updated_at
 
 alter table public.templates enable row level security;
 
-drop policy if exists "templates_all_access" on public.templates;
-create policy "templates_all_access" on public.templates
-  for all using (true) with check (true);
+drop policy if exists "templates_select" on public.templates;
+create policy "templates_select" on public.templates
+  for select using (auth.role() = 'authenticated');
 
--- ── 3. MASTER DATA TABLE ────────────────────────────────────────────────────
+drop policy if exists "templates_insert" on public.templates;
+create policy "templates_insert" on public.templates
+  for insert with check (public.is_designer());
+
+drop policy if exists "templates_update" on public.templates;
+create policy "templates_update" on public.templates
+  for update using (public.is_designer()) with check (public.is_designer());
+
+drop policy if exists "templates_delete" on public.templates;
+create policy "templates_delete" on public.templates
+  for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 3. MASTER DATA TABLE (admin writable)
+-- ════════════════════════════════════════════════════════════════════════════
 create table if not exists public.master_data (
     id         text primary key,
     type       text not null,                -- 'plant' | 'vendor' | 'financial_year' | 'month' | 'category' | 'group' | 'color' | 'warranty' | 'variable'
@@ -130,7 +286,6 @@ create table if not exists public.master_data (
     constraint master_data_type_code unique (type, code)
 );
 
--- Migration safety for existing master_data table
 alter table public.master_data add column if not exists meta jsonb default '{}';
 alter table public.master_data add column if not exists created_by text;
 alter table public.master_data add column if not exists updated_by text;
@@ -144,11 +299,25 @@ create trigger trg_master_data_updated_at
 
 alter table public.master_data enable row level security;
 
-drop policy if exists "master_data_all_access" on public.master_data;
-create policy "master_data_all_access" on public.master_data
-  for all using (true) with check (true);
+drop policy if exists "master_data_select" on public.master_data;
+create policy "master_data_select" on public.master_data
+  for select using (auth.role() = 'authenticated');
 
--- ── 4. PRODUCTS TABLE ───────────────────────────────────────────────────────
+drop policy if exists "master_data_insert" on public.master_data;
+create policy "master_data_insert" on public.master_data
+  for insert with check (public.is_admin());
+
+drop policy if exists "master_data_update" on public.master_data;
+create policy "master_data_update" on public.master_data
+  for update using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "master_data_delete" on public.master_data;
+create policy "master_data_delete" on public.master_data
+  for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 4. PRODUCTS TABLE (admin writable)
+-- ════════════════════════════════════════════════════════════════════════════
 create table if not exists public.products (
     id                   text primary key,
     sku                  text not null unique,
@@ -174,7 +343,6 @@ create table if not exists public.products (
     updated_at           timestamptz not null default now()
 );
 
--- Migration safety: Add any missing columns to existing products table
 alter table public.products add column if not exists sku text;
 alter table public.products add column if not exists title text;
 alter table public.products add column if not exists category text default 'General';
@@ -206,11 +374,25 @@ create trigger trg_products_updated_at
 
 alter table public.products enable row level security;
 
-drop policy if exists "products_all_access" on public.products;
-create policy "products_all_access" on public.products
-  for all using (true) with check (true);
+drop policy if exists "products_select" on public.products;
+create policy "products_select" on public.products
+  for select using (auth.role() = 'authenticated');
 
--- ── 5. SERIALIZED UNITS TABLE ───────────────────────────────────────────────
+drop policy if exists "products_insert" on public.products;
+create policy "products_insert" on public.products
+  for insert with check (public.is_admin());
+
+drop policy if exists "products_update" on public.products;
+create policy "products_update" on public.products
+  for update using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "products_delete" on public.products;
+create policy "products_delete" on public.products
+  for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 5. SERIALIZED UNITS TABLE (admin writable)
+-- ════════════════════════════════════════════════════════════════════════════
 create table if not exists public.serialized_units (
     id              text primary key,
     serial_number   text not null unique,
@@ -235,7 +417,6 @@ create table if not exists public.serialized_units (
     updated_at      timestamptz not null default now()
 );
 
--- Migration safety: Add any missing columns to existing serialized_units table
 alter table public.serialized_units add column if not exists sku text default '';
 alter table public.serialized_units add column if not exists product_title text default '';
 alter table public.serialized_units add column if not exists price text default '';
@@ -265,11 +446,25 @@ create trigger trg_serialized_units_updated_at
 
 alter table public.serialized_units enable row level security;
 
-drop policy if exists "serialized_units_all_access" on public.serialized_units;
-create policy "serialized_units_all_access" on public.serialized_units
-  for all using (true) with check (true);
+drop policy if exists "serialized_units_select" on public.serialized_units;
+create policy "serialized_units_select" on public.serialized_units
+  for select using (auth.role() = 'authenticated');
 
--- ── 6. EMPLOYEES & ID BADGES TABLE ──────────────────────────────────────────
+drop policy if exists "serialized_units_insert" on public.serialized_units;
+create policy "serialized_units_insert" on public.serialized_units
+  for insert with check (public.is_admin());
+
+drop policy if exists "serialized_units_update" on public.serialized_units;
+create policy "serialized_units_update" on public.serialized_units
+  for update using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "serialized_units_delete" on public.serialized_units;
+create policy "serialized_units_delete" on public.serialized_units
+  for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 6. EMPLOYEES & ID BADGES TABLE (admin writable)
+-- ════════════════════════════════════════════════════════════════════════════
 create table if not exists public.employees (
     id              text primary key,
     employee_id     text not null unique,
@@ -293,7 +488,6 @@ create table if not exists public.employees (
     updated_at      timestamptz not null default now()
 );
 
--- Migration safety: Add any missing columns to existing employees table
 alter table public.employees add column if not exists designation text default '';
 alter table public.employees add column if not exists department text default '';
 alter table public.employees add column if not exists company text default 'Kajaria Bathware';
@@ -320,14 +514,25 @@ create trigger trg_employees_updated_at
 
 alter table public.employees enable row level security;
 
-drop policy if exists "employees_all_access" on public.employees;
-create policy "employees_all_access" on public.employees
-  for all using (true) with check (true);
+drop policy if exists "employees_select" on public.employees;
+create policy "employees_select" on public.employees
+  for select using (auth.role() = 'authenticated');
 
+drop policy if exists "employees_insert" on public.employees;
+create policy "employees_insert" on public.employees
+  for insert with check (public.is_admin());
 
--- ?? Company branding / white-label profile (single row) ???????????????????????
--- Stored in the database so the app name, logo and contact details are shared
--- across every device; localStorage is only an offline cache.
+drop policy if exists "employees_update" on public.employees;
+create policy "employees_update" on public.employees
+  for update using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "employees_delete" on public.employees;
+create policy "employees_delete" on public.employees
+  for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 7. COMPANY BRANDING / WHITE-LABEL PROFILE (single row, admin writable)
+-- ════════════════════════════════════════════════════════════════════════════
 create table if not exists public.company_profile (
     id text primary key,
     company_name text default '',
@@ -351,19 +556,23 @@ alter table public.company_profile enable row level security;
 
 drop policy if exists "company_profile_select" on public.company_profile;
 create policy "company_profile_select" on public.company_profile
-  for select using (auth.role() = ''authenticated'');
+  for select using (auth.role() = 'authenticated');
+
 drop policy if exists "company_profile_insert" on public.company_profile;
 create policy "company_profile_insert" on public.company_profile
-  for insert with check (auth.role() = ''authenticated'');
+  for insert with check (public.is_admin());
+
 drop policy if exists "company_profile_update" on public.company_profile;
 create policy "company_profile_update" on public.company_profile
-  for update using (auth.role() = ''authenticated'');
+  for update using (public.is_admin()) with check (public.is_admin());
+
 drop policy if exists "company_profile_delete" on public.company_profile;
 create policy "company_profile_delete" on public.company_profile
-  for delete using (auth.role() = ''authenticated'');
+  for delete using (public.is_admin());
 
-
--- ?? Production batches (one batch per printed product selection) ?????????????
+-- ════════════════════════════════════════════════════════════════════════════
+-- 8. PRODUCTION BATCHES (admin writable)
+-- ════════════════════════════════════════════════════════════════════════════
 create table if not exists public.batches (
     id text primary key,
     batch_number text not null unique,
@@ -374,7 +583,7 @@ create table if not exists public.batches (
     lot_quantity integer default 0,
     mfg_date text default '',
     shift text default '',
-    status text default ''In Stock'',
+    status text default 'In Stock',
     generated_at timestamptz not null default now(),
     created_by text,
     updated_by text,
@@ -390,10 +599,52 @@ create trigger trg_batches_updated_at
 alter table public.batches enable row level security;
 
 drop policy if exists "batches_select" on public.batches;
-create policy "batches_select" on public.batches for select using (auth.role() = ''authenticated'');
+create policy "batches_select" on public.batches for select using (auth.role() = 'authenticated');
+
 drop policy if exists "batches_insert" on public.batches;
-create policy "batches_insert" on public.batches for insert with check (auth.role() = ''authenticated'');
+create policy "batches_insert" on public.batches for insert with check (public.is_admin());
+
 drop policy if exists "batches_update" on public.batches;
-create policy "batches_update" on public.batches for update using (auth.role() = ''authenticated'');
+create policy "batches_update" on public.batches for update using (public.is_admin()) with check (public.is_admin());
+
 drop policy if exists "batches_delete" on public.batches;
-create policy "batches_delete" on public.batches for delete using (auth.role() = ''authenticated'');
+create policy "batches_delete" on public.batches for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 9. LOGIC RULES (Serial Number & Batch Number formats) — shared across devices
+--    One row per rule type ('serial' | 'batch'), holding the full rule array
+--    (segment order, inclusions, delimiters, sequence settings) as JSON.
+--    This is what makes settings identical no matter where you log in.
+-- ════════════════════════════════════════════════════════════════════════════
+create table if not exists public.logic_rules (
+    type       text primary key,        -- 'serial' | 'batch'
+    rules      jsonb not null default '[]',
+    updated_by text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+drop trigger if exists trg_logic_rules_updated_at on public.logic_rules;
+create trigger trg_logic_rules_updated_at
+  before update on public.logic_rules
+  for each row execute function public.set_updated_at();
+
+alter table public.logic_rules enable row level security;
+
+-- any authenticated user (every operator/designer/admin) may read the shared rules
+drop policy if exists "logic_rules_select" on public.logic_rules;
+create policy "logic_rules_select" on public.logic_rules
+  for select using (auth.role() = 'authenticated');
+
+-- only admins may change the global rule structure
+drop policy if exists "logic_rules_insert" on public.logic_rules;
+create policy "logic_rules_insert" on public.logic_rules
+  for insert with check (public.is_admin());
+
+drop policy if exists "logic_rules_update" on public.logic_rules;
+create policy "logic_rules_update" on public.logic_rules
+  for update using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "logic_rules_delete" on public.logic_rules;
+create policy "logic_rules_delete" on public.logic_rules
+  for delete using (public.is_admin());

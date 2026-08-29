@@ -64,7 +64,7 @@ export class AuthView {
                                 placeholder="name@example.com" 
                                 required 
                                 autocomplete="email"
-                                value="mithunaes@gmail.com"
+                                value=""
                             />
                         </div>
                     </div>
@@ -80,7 +80,7 @@ export class AuthView {
                                 placeholder="••••••••••••" 
                                 required 
                                 autocomplete="current-password"
-                                value="654321"
+                                value=""
                             />
                             <button type="button" id="btn-toggle-password" class="auth-eye-btn" title="Toggle password visibility">
                                 👁️

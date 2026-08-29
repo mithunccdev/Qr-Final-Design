@@ -6,6 +6,7 @@
 
 import { getMasterData, MasterDataOption } from './master-data';
 import { ProductRecord, SerializedUnit } from './product-manager';
+import { supabaseService } from '../supabase';
 
 export type SerialSegmentType =
     | 'custom_prefix'
@@ -666,6 +667,33 @@ export function generateAutomatedSerials(params: {
     // Update rule sequence progress
     rule.currentSequence = currentSeq;
     saveSerialLogicRule(rule);
+    void persistSerialLogicRulesToDb();
 
     return { units: generatedUnits, nextSequence: currentSeq };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SYNC LOGIC RULES TO THE SHARED DATABASE
+//   Stored in the `logic_rules` table so the rule structure (segment order,
+//   inclusions, delimiters, sequence settings) is IDENTICAL from any device.
+//   localStorage is kept as a fast offline cache; the DB is the source of truth.
+// ──────────────────────────────────────────────────────────────────────────────
+
+export async function persistSerialLogicRulesToDb(): Promise<boolean> {
+    return supabaseService.saveLogicRules('serial', loadSerialLogicRules());
+}
+
+export async function persistBatchLogicRulesToDb(): Promise<boolean> {
+    return supabaseService.saveLogicRules('batch', loadBatchLogicRules());
+}
+
+/** Load rules from the DB into the local cache. DB wins; falls back silently. */
+export async function hydrateSerialLogicRulesFromDb(): Promise<void> {
+    const rules = await supabaseService.fetchLogicRules('serial');
+    if (rules && rules.length) saveSerialLogicRules(rules);
+}
+
+export async function hydrateBatchLogicRulesFromDb(): Promise<void> {
+    const rules = await supabaseService.fetchLogicRules('batch');
+    if (rules && rules.length) saveBatchLogicRules(rules);
 }

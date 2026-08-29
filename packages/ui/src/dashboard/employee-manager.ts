@@ -2,6 +2,7 @@ import { StickerLayout } from 'qrlayout-core';
 import type { EntitySchema } from '../types';
 import { PREBUILT_TEMPLATES } from './templates-data';
 import { supabaseService } from '../supabase';
+import { esc } from '../escape';
 
 export interface EmployeeRecord {
     id: string;
@@ -234,29 +235,29 @@ export class EmployeeManagerView {
                 </td>
                 <td>
                     <div class="user-cell-wrap">
-                        <div class="user-avatar-initials">${initials}</div>
+                        <div class="user-avatar-initials">${esc(initials)}</div>
                         <div>
-                            <div class="item-title-bold">${e.name}</div>
-                            <div class="item-desc-sub">${e.email}</div>
+                            <div class="item-title-bold">${esc(e.name)}</div>
+                            <div class="item-desc-sub">${esc(e.email)}</div>
                         </div>
                     </div>
                 </td>
                 <td>
-                    <span class="sku-badge">🪪 ${e.employeeId}</span>
+                    <span class="sku-badge">🪪 ${esc(e.employeeId)}</span>
                 </td>
                 <td>
-                    <div class="emp-role-bold">${e.designation}</div>
-                    <div class="item-desc-sub">${e.department} • ${e.company}</div>
+                    <div class="emp-role-bold">${esc(e.designation)}</div>
+                    <div class="item-desc-sub">${esc(e.department)} • ${esc(e.company)}</div>
                 </td>
                 <td>
-                    <span class="tier-badge tier-${e.accessTier.toLowerCase().replace(/[^a-z0-9]/g, '-')}">${e.accessTier}</span>
+                    <span class="tier-badge tier-${esc(e.accessTier.toLowerCase().replace(/[^a-z0-9]/g, '-'))}">${esc(e.accessTier)}</span>
                 </td>
                 <td>
-                    <span class="blood-chip">${e.bloodGroup || 'N/A'}</span>
+                    <span class="blood-chip">${esc(e.bloodGroup || 'N/A')}</span>
                 </td>
                 <td>
-                    <span class="status-badge status-${e.badgeStatus.toLowerCase().replace(/\s+/g, '-')}">${e.badgeStatus}</span>
-                    ${e.lastPrintedAt ? `<div class="text-xs text-muted">Printed (${e.printCount}x)</div>` : `<div class="text-xs text-amber-500">Unprinted</div>`}
+                    <span class="status-badge status-${esc(e.badgeStatus.toLowerCase().replace(/\s+/g, '-'))}">${esc(e.badgeStatus)}</span>
+                    ${e.lastPrintedAt ? `<div class="text-xs text-muted">Printed (${esc(String(e.printCount))}x)</div>` : `<div class="text-xs text-amber-500">Unprinted</div>`}
                 </td>
                 <td>
                     <div class="row-actions-group">

@@ -3,6 +3,7 @@ import type { EntitySchema } from '../types';
 import { PREBUILT_TEMPLATES } from './templates-data';
 import { ProductRecord, SerializedUnit } from './product-manager';
 import { getBatchLogicRule, generateBatchNumberPreview } from './serial-batch-logic';
+import { esc } from '../escape';
 
 export interface BatchRecord {
     id: string;
@@ -545,8 +546,8 @@ export class BatchManagerView {
                         <label style="font-weight: 700; font-size: 0.8125rem;">Target Product *</label>
                         <select id="bm-product" class="filter-dropdown" style="width: 100%;">
                             ${this.products.map(p => `
-                                <option value="${p.id}" ${p.id === (existingBatch?.productId || defaultProd?.id) ? 'selected' : ''}>
-                                    ${p.sku} — ${p.title}
+                                <option value="${esc(p.id)}" ${p.id === (existingBatch?.productId || defaultProd?.id) ? 'selected' : ''}>
+                                    ${esc(p.sku)} — ${esc(p.title)}
                                 </option>
                             `).join('')}
                         </select>

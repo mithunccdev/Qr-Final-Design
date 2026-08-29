@@ -5,6 +5,7 @@ import { supabaseService } from '../supabase';
 import { ProductRecord, SerializedUnit, formatINR, parseINRValue } from './product-manager';
 import { BatchRecord } from './batch-manager';
 import { getSerialLogicRule, generateSerialNumberPreview, generateAutomatedSerials } from './serial-batch-logic';
+import { esc } from '../escape';
 
 export interface SerialManagerOptions {
     container: HTMLElement;
@@ -269,12 +270,12 @@ export class SerialManagerView {
 
                         <select id="filter-serial-batch" class="filter-dropdown">
                             <option value="All" ${this.batchFilter === 'All' ? 'selected' : ''}>All Batches</option>
-                            ${uniqueBatches.map(b => `<option value="${b}" ${this.batchFilter === b ? 'selected' : ''}>${b}</option>`).join('')}
+                            ${uniqueBatches.map(b => `<option value="${esc(b)}" ${this.batchFilter === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
                         </select>
 
                         <select id="filter-serial-product" class="filter-dropdown">
                             <option value="All" ${this.productFilter === 'All' ? 'selected' : ''}>All Products</option>
-                            ${this.products.map(pr => `<option value="${pr.id}" ${this.productFilter === pr.id ? 'selected' : ''}>${pr.sku} - ${pr.title}</option>`).join('')}
+                            ${this.products.map(pr => `<option value="${esc(pr.id)}" ${this.productFilter === pr.id ? 'selected' : ''}>${esc(pr.sku)} - ${esc(pr.title)}</option>`).join('')}
                         </select>
                     </div>
                 </div>
@@ -310,29 +311,29 @@ export class SerialManagerView {
                                 const isChecked = this.selectedSerialIds.has(s.id);
                                 const batchNum = (s as any).batchNumber || '—';
                                 return `
-                                <tr class="${isChecked ? 'row-selected' : ''}" data-id="${s.id}">
+                                <tr class="${isChecked ? 'row-selected' : ''}" data-id="${esc(s.id)}">
                                     <td>
-                                        <input type="checkbox" class="chk-serial-item" data-id="${s.id}" ${isChecked ? 'checked' : ''} />
+                                        <input type="checkbox" class="chk-serial-item" data-id="${esc(s.id)}" ${isChecked ? 'checked' : ''} />
                                     </td>
                                     <td>
                                         <div style="display: flex; align-items: center; gap: 8px;">
                                             <span class="code-badge-pill" style="font-weight: 700; font-family: monospace; font-size: 0.875rem; color: var(--accent); background: var(--accent-soft); padding: 4px 8px; border-radius: 6px;">
-                                                ${s.serialNumber}
+                                                ${esc(s.serialNumber)}
                                             </span>
                                         </div>
                                     </td>
                                     <td>
                                         <div>
-                                            <div style="font-weight: 600; color: var(--text-primary); font-size: 0.875rem;">${s.productTitle}</div>
-                                            <div style="font-size: 0.75rem; font-family: monospace; color: var(--text-secondary);">${s.sku}</div>
+                                            <div style="font-weight: 600; color: var(--text-primary); font-size: 0.875rem;">${esc(s.productTitle)}</div>
+                                            <div style="font-size: 0.75rem; font-family: monospace; color: var(--text-secondary);">${esc(s.sku)}</div>
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="nav-item-badge badge-neutral" style="font-size: 0.75rem;">${s.plant || 'KSPL'}</span>
+                                        <span class="nav-item-badge badge-neutral" style="font-size: 0.75rem;">${esc(s.plant || 'KSPL')}</span>
                                     </td>
                                     <td>
                                         ${batchNum !== '—' ? `
-                                            <span class="nav-item-badge badge-indigo" style="font-family: monospace; font-size: 0.75rem;">${batchNum}</span>
+                                            <span class="nav-item-badge badge-indigo" style="font-family: monospace; font-size: 0.75rem;">${esc(batchNum)}</span>
                                         ` : '<span style="color: var(--text-secondary); font-size: 0.75rem;">—</span>'}
                                     </td>
                                     <td>
@@ -600,8 +601,8 @@ export class SerialManagerView {
                         <label style="font-weight: 700; font-size: 0.8125rem;">Target Product *</label>
                         <select id="gen-serial-product" class="filter-dropdown" style="width: 100%;">
                             ${this.products.map(p => `
-                                <option value="${p.id}" ${p.id === defaultProduct?.id ? 'selected' : ''}>
-                                    ${p.sku} — ${p.title} (${p.plant || 'KSPL'} | Color: ${p.color || 'CP'})
+                                <option value="${esc(p.id)}" ${p.id === defaultProduct?.id ? 'selected' : ''}>
+                                    ${esc(p.sku)} — ${esc(p.title)} (${esc(p.plant || 'KSPL')} | Color: ${esc(p.color || 'CP')})
                                 </option>
                             `).join('')}
                         </select>
@@ -712,7 +713,7 @@ export class SerialManagerView {
         const modalRoot = this.container.querySelector('#serial-modal-root') as HTMLElement;
         if (!modalRoot) return;
 
-        const qrValue = `https://verify.kajariabathware.in/sn/${unit.serialNumber}?sku=${unit.sku}&plant=${unit.plant || 'KSPL'}`;
+        const qrValue = `https://verify.kajariabathware.in/sn/${encodeURIComponent(unit.serialNumber)}?sku=${encodeURIComponent(unit.sku)}&plant=${encodeURIComponent(unit.plant || 'KSPL')}`;
 
         modalRoot.innerHTML = `
         <div class="modal-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
@@ -733,23 +734,23 @@ export class SerialManagerView {
 
                     <div>
                         <div style="font-size: 1.25rem; font-weight: 800; font-family: monospace; color: var(--accent);">
-                            ${unit.serialNumber}
+                            ${esc(unit.serialNumber)}
                         </div>
                         <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-top: 4px;">
-                            ${unit.productTitle}
+                            ${esc(unit.productTitle)}
                         </div>
                         <div style="font-size: 0.75rem; color: var(--text-secondary); font-family: monospace;">
-                            SKU: ${unit.sku} | Plant: ${unit.plant || 'KSPL'} | Color: ${unit.color || 'CP'}
+                            SKU: ${esc(unit.sku)} | Plant: ${esc(unit.plant || 'KSPL')} | Color: ${esc(unit.color || 'CP')}
                         </div>
                         ${(unit as any).batchNumber ? `
                             <div style="margin-top: 6px;">
-                                <span class="nav-item-badge badge-indigo" style="font-family: monospace; font-size: 0.75rem;">Batch: ${(unit as any).batchNumber}</span>
+                                <span class="nav-item-badge badge-indigo" style="font-family: monospace; font-size: 0.75rem;">Batch: ${esc((unit as any).batchNumber)}</span>
                             </div>
                         ` : ''}
                     </div>
 
                     <div style="background: var(--surface-muted); padding: 8px 12px; border-radius: 6px; font-size: 0.75rem; font-family: monospace; word-break: break-all; color: var(--text-secondary); width: 100%;">
-                        ${qrValue}
+                        ${esc(qrValue)}
                     </div>
                 </div>
 

@@ -12,6 +12,7 @@ import { OverviewDashboardView } from './overview-dashboard';
 import { UserManagerView } from './user-manager';
 import { MasterDataManagerView } from './master-data-manager';
 import { mergeMasterDataFromDb } from './master-data';
+import { hydrateSerialLogicRulesFromDb, hydrateBatchLogicRulesFromDb } from './serial-batch-logic';
 import { BrandingManagerView } from './branding-manager';
 import { loadCompanyProfile, logoBadgeHtml, CompanyProfile } from './branding';
 import { AuthView } from './auth-view';
@@ -345,6 +346,10 @@ export class QRStudioApp {
 
         // Sync shared master data (plants, categories, colors, variables...) from DB
         void supabaseService.fetchMasterData().then(list => { if (list) mergeMasterDataFromDb(list); });
+
+        // Sync Serial/Batch logic rules from DB so settings are identical on every device
+        void hydrateSerialLogicRulesFromDb();
+        void hydrateBatchLogicRulesFromDb();
 
         // Sync company branding from DB
         this.applyBranding();

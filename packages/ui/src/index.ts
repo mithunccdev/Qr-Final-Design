@@ -5,6 +5,7 @@ import { DesignerState } from './state'
 import { CanvasManager } from './canvas-manager'
 import { PropertyPanel, MultiSelectCallbacks } from './property-panel'
 import { buildTemplate } from './template'
+import { esc } from './escape'
 import type { DesignerLayout, EntitySchema, DesignerOptions } from './types'
 
 export { QRStudioApp } from './dashboard/studio-app'
@@ -367,8 +368,8 @@ export class QRLayoutDesigner {
             label.style.display = 'flex'
             label.style.justifyContent = 'space-between'
             label.innerHTML = `
-                <span>${field.label || field.name}</span>
-                <code style="font-size: 0.625rem; opacity: 0.6; background: var(--panel-bg-alt); padding: 1px 4px; border-radius: 3px;">{{${field.name}}}</code>
+                <span>${esc(field.label || field.name)}</span>
+                <code style="font-size: 0.625rem; opacity: 0.6; background: var(--panel-bg-alt); padding: 1px 4px; border-radius: 3px;">{{${esc(field.name)}}}</code>
             `
 
             const input = document.createElement('input')
@@ -396,8 +397,8 @@ export class QRLayoutDesigner {
             div.className = `element-item ${this.selectedIds.has(el.id) ? 'active' : ''}`
             div.innerHTML = `
                 <div class="element-info">
-                    <span class="element-name">${el.type.toUpperCase()}</span>
-                    <span class="element-sub">${String(el.content).substring(0, 20)}</span>
+                    <span class="element-name">${esc(el.type.toUpperCase())}</span>
+                    <span class="element-sub">${esc(String(el.content).substring(0, 20))}</span>
                 </div>
             `
             div.onclick = (e) => this.selectElement(el.id, e.ctrlKey || e.metaKey)
