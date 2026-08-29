@@ -471,17 +471,19 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
     const seq = ctx.sequence !== undefined ? ctx.sequence : rule.sequenceStartNumber;
     const prod = ctx.product || { sku: 'FAUC-KS-01', category: 'faucet', group: 'mixer', color: 'CP' };
 
+    const pad = (v: string | number | undefined): string => String(v ?? '').padStart(rule.sequencePadding, '0');
+
     const segmentValues: Record<SerialSegmentType, string> = {
         custom_prefix: rule.customPrefix || '',
-        plant: resolvePlantCode(plant, false),
-        vendor: 'V1',
-        financial_year: resolveFinancialYearCode(date, false),
-        month: resolveMonthCode(date, false),
-        category: resolveCategoryCode(prod.category || 'faucet', false),
-        group: resolveGroupCode(prod.group || 'mixer', false),
-        sku: prod.sku ? prod.sku.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase() : '0001',
-        color: prod.color || ctx.color || 'CP',
-        sequence: String(seq).padStart(rule.sequencePadding, '0')
+        plant: pad(resolvePlantCode(plant, false)),
+        vendor: pad('V1'),
+        financial_year: pad(resolveFinancialYearCode(date, false)),
+        month: pad(resolveMonthCode(date, false)),
+        category: pad(resolveCategoryCode(prod.category || 'faucet', false)),
+        group: pad(resolveGroupCode(prod.group || 'mixer', false)),
+        sku: pad(prod.sku ? prod.sku.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase() : '0001'),
+        color: pad(prod.color || ctx.color || 'CP'),
+        sequence: pad(seq)
     };
 
     const activeParts: string[] = [];
@@ -537,16 +539,18 @@ export function generateBatchNumberPreview(rule: BatchNumberLogicRule, ctx: Batc
     const seq = ctx.sequence !== undefined ? ctx.sequence : rule.sequenceStartNumber;
     const prod = ctx.product || { category: 'faucet', group: 'mixer' };
 
+    const pad = (v: string | number | undefined): string => String(v ?? '').padStart(rule.sequencePadding, '0');
+
     const segmentValues: Record<BatchSegmentType, string> = {
         custom_prefix: rule.customPrefix || 'BAT',
-        plant: resolvePlantCode(plant, true),
-        vendor: 'VB1',
-        financial_year: resolveFinancialYearCode(date, true),
-        month: resolveMonthCode(date, true),
-        category: resolveCategoryCode(prod.category || 'faucet', true),
-        group: resolveGroupCode(prod.group || 'mixer', true),
+        plant: pad(resolvePlantCode(plant, true)),
+        vendor: pad('VB1'),
+        financial_year: pad(resolveFinancialYearCode(date, true)),
+        month: pad(resolveMonthCode(date, true)),
+        category: pad(resolveCategoryCode(prod.category || 'faucet', true)),
+        group: pad(resolveGroupCode(prod.group || 'mixer', true)),
         shift: (ctx.shift || 'A').slice(-1),
-        sequence: String(seq).padStart(rule.sequencePadding, '0')
+        sequence: pad(seq)
     };
 
     const activeParts: string[] = [];
