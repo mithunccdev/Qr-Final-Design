@@ -2312,23 +2312,34 @@
 }
 
 /* ── Master Data type navigation ───────────────────────────────────────────── */
+/* One tidy row — tabs never awkwardly wrap; they scroll horizontally when the
+   viewport is narrow, and shrink to fit comfortably when there is room. */
 .master-type-nav {
   display: flex;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 2px 2px 4px 2px;
+  margin-bottom: 18px;
+  scrollbar-width: thin;
 }
+.master-type-nav::-webkit-scrollbar { height: 6px; }
+.master-type-nav::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
+.master-type-nav::-webkit-scrollbar-track { background: transparent; }
 
 .master-type-tab {
-  display: flex;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 12px;
+  padding: 7px 14px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink-muted);
-  font-size: 0.78125rem;
+  font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -2339,6 +2350,12 @@
   background: var(--ink);
   color: #fff;
   border-color: var(--ink);
+}
+
+/* When there is plenty of room, stretch tabs to evenly share the row. */
+@media (min-width: 1200px) {
+  .master-type-nav { flex-wrap: wrap; }
+  .master-type-tab { flex: 1 1 auto; justify-content: center; }
 }
 
 /* ── Branding / company page ───────────────────────────────────────────────── */
