@@ -333,7 +333,7 @@ export class MasterDataManagerView {
                         🌐 All Plants (Global Default)
                     </button>
                     ${plants.map(p => `
-                        <button class="btn btn-sm ${this.selectedPlantForRule === p.code ? 'btn-primary' : 'btn-outline'} btn-serial-plant-tab" data-plant="${esc(p.code)}">
+                        <button class="btn btn-sm ${this.selectedPlantForRule === (p.label || p.code) ? 'btn-primary' : 'btn-outline'} btn-serial-plant-tab" data-plant="${esc(p.label || p.code)}">
                             🏭 ${esc(p.label)} (${esc(p.serialCode || p.code)})
                         </button>
                     `).join('')}
@@ -788,7 +788,7 @@ export class MasterDataManagerView {
                         🌐 All Plants (Global Default)
                     </button>
                     ${plants.map(p => `
-                        <button class="btn btn-sm ${this.selectedPlantForRule === p.code ? 'btn-primary' : 'btn-outline'} btn-batch-plant-tab" data-plant="${esc(p.code)}">
+                        <button class="btn btn-sm ${this.selectedPlantForRule === (p.label || p.code) ? 'btn-primary' : 'btn-outline'} btn-batch-plant-tab" data-plant="${esc(p.label || p.code)}">
                             🏭 ${esc(p.label)} (${esc(p.batchCode || p.code)})
                         </button>
                     `).join('')}

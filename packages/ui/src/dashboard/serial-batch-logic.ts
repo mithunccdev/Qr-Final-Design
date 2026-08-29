@@ -324,8 +324,15 @@ export function saveBatchLogicRule(rule: BatchNumberLogicRule): void {
 
 export function resolvePlantCode(plant: string, forBatch = false): string {
     const plants = getMasterData('plant');
-    const match = plants.find(p => p.code.toUpperCase() === plant.toUpperCase() || p.plantCode === plant);
-    if (!match) return plant.toUpperCase();
+    const key = String(plant || '').toUpperCase();
+    // Match by code, associated plant code, OR by label/name — because a plant
+    // master may store its unique numeric id in `code` and the human name in `label`.
+    const match = plants.find(p =>
+        String(p.code || '').toUpperCase() === key ||
+        String(p.plantCode || '').toUpperCase() === key ||
+        String(p.label || '').toUpperCase() === key
+    );
+    if (!match) return key || plant;
     if (forBatch) return match.batchCode || match.code;
     return match.serialCode || match.code;
 }

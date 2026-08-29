@@ -113,7 +113,12 @@ export function getMasterData(type: MasterDataType): MasterDataOption[] {
 }
 
 export function getPlantByCode(code: string): MasterDataOption | undefined {
-    return loadMasterData().find(o => o.type === 'plant' && (o.code === code || o.plantCode === code));
+    const key = String(code || '').toUpperCase();
+    return loadMasterData().find(o => o.type === 'plant' && (
+        String(o.code || '').toUpperCase() === key ||
+        String(o.plantCode || '').toUpperCase() === key ||
+        String(o.label || '').toUpperCase() === key
+    ));
 }
 
 export function getVendorsByPlant(plantCodeOrCode: string): MasterDataOption[] {
