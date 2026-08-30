@@ -850,3 +850,38 @@ drop policy if exists "roles_update" on public.roles;
 create policy "roles_update" on public.roles for update using (public.is_admin()) with check (public.is_admin());
 drop policy if exists "roles_delete" on public.roles;
 create policy "roles_delete" on public.roles for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 16. PUBLIC SERIAL VERIFICATION (used by the public verify-serial page)
+--     Security definer so anon callers can verify a serial number over PostgREST
+--     RPC without exposing the rest of the table. Returns limited data only.
+-- ════════════════════════════════════════════════════════════════════════════
+create or replace function public.verify_serial(sn text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v record;
+begin
+  select serial_number, product_title, sku, plant, status into v
+  from public.serialized_units
+  where upper(serial_number) = upper(coalesce(sn, ''))
+  limit 1;
+
+  if not found then
+    return jsonb_build_object('valid', false, 'message', 'Serial number not found');
+  end if;
+
+  return jsonb_build_object(
+    'valid', true,
+    'serial_number', v.serial_number,
+    'product', coalesce(v.product_title, ''),
+    'sku', coalesce(v.sku, ''),
+    'plant', coalesce(v.plant, ''),
+    'status', coalesce(v.status, '')
+  );
+end $$;
+
+grant execute on function public.verify_serial(text) to anon, authenticated;

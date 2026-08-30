@@ -4,7 +4,7 @@ export class DesignerState {
     private _layout: DesignerLayout
     private undoStack: string[] = []
     private redoStack: string[] = []
-    private readonly MAX_UNDO = 20
+    private readonly MAX_UNDO = 100
     private readonly onStackChange: () => void
 
     constructor(layout: DesignerLayout, onStackChange: () => void = () => {}) {

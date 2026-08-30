@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#4f46e5" />
+  <title>Verify Serial Number</title>
+  <style>
+    :root { --accent:#4f46e5; --ok:#059669; --bad:#ef4444; --bg:#f4f4f5; --line:#e2e8f0; --text:#0f172a; --muted:#64748b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); font-family:Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; color:var(--text); -webkit-font-smoothing:antialiased; }
+    .wrap { max-width:480px; margin:8vh auto 0; padding:24px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:28px; box-shadow:0 2px 12px rgba(0,0,0,.06); }
+    .logo { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
+    .logo .mark { width:34px; height:34px; border-radius:9px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; }
+    h1 { font-size:1.15rem; margin:0 0 4px; }
+    .sub { font-size:.8125rem; color:var(--muted); margin:0 0 18px; }
+    label { font-size:.75rem; font-weight:600; color:var(--muted); display:block; margin-bottom:6px; }
+    input { width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:9px; font-size:.875rem; }
+    input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,70,229,.15); }
+    button { margin-top:12px; width:100%; padding:11px 12px; background:var(--accent); color:#fff; border:none; border-radius:9px; font-size:.875rem; font-weight:600; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .result { margin-top:16px; padding:14px; border-radius:10px; font-size:.875rem; display:none; }
+    .result.ok { display:block; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; }
+    .result.bad { display:block; background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+    .result .row { display:flex; justify-content:space-between; gap:12px; padding:4px 0; }
+    .result .row b { color:var(--text); }
+    .brand { text-align:center; margin-top:18px; font-size:.75rem; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="logo">
+        <div class="mark">✓</div>
+        <div>
+          <h1>Verify Serial Number</h1>
+          <p class="sub">Check the authenticity of a product serial number.</p>
+        </div>
+      </div>
+      <label for="sn">Serial Number</label>
+      <input id="sn" placeholder="e.g. SN-0001" autocomplete="off" />
+      <button id="btn">Verify</button>
+      <div id="result" class="result"></div>
+    </div>
+    <div class="brand">QR Studio · Product Verification</div>
+  </div>
+  <script src="./verify.js" defer></script>
+</body>
+</html>

@@ -125,7 +125,13 @@ export function buildTemplate(): string {
                         <input type="checkbox" data-action="toggle-grid" />
                         <span>Snap to Grid</span>
                     </label>
-                    <span class="canvas-toolbar-hint">Del — delete · Arrow — nudge · Shift+Arrow — nudge 5x · Ctrl+D — duplicate · Ctrl+A — select all · Ctrl+Click — multi-select</span>
+                    <div class="zoom-controls" style="display:flex;align-items:center;gap:4px;margin-left:auto;">
+                        <button class="btn btn-icon btn-outline btn-xs" data-action="zoom-out" title="Zoom out">−</button>
+                        <span class="zoom-level" data-el="zoom-level" style="font-size:0.72rem;font-weight:600;min-width:44px;text-align:center;">100%</span>
+                        <button class="btn btn-icon btn-outline btn-xs" data-action="zoom-in" title="Zoom in">+</button>
+                        <button class="btn btn-icon btn-outline btn-xs" data-action="zoom-fit" title="Reset zoom">⤢</button>
+                    </div>
+                    <span class="canvas-toolbar-hint">Del — delete · Arrow — nudge · Ctrl+D — duplicate · Ctrl+C/V — copy/paste · Ctrl+A — select all</span>
                 </div>
             </main>
 

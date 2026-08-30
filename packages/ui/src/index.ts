@@ -38,6 +38,7 @@ export class QRLayoutDesigner {
     private propPanel!: PropertyPanel
     private selectedIds: Set<string> = new Set()
     private isDarkMode = false
+    private zoom = 1
 
     private _keyHandler!: (e: KeyboardEvent) => void
     private _resizeObserver!: ResizeObserver
@@ -286,6 +287,9 @@ export class QRLayoutDesigner {
             this.canvasMgr.snapToGrid = (e.target as HTMLInputElement).checked
             this.refreshOverlay()
         })
+        this.container.querySelector('[data-action="zoom-in"]')?.addEventListener('click', () => this.setZoom(this.zoom + 0.25))
+        this.container.querySelector('[data-action="zoom-out"]')?.addEventListener('click', () => this.setZoom(this.zoom - 0.25))
+        this.container.querySelector('[data-action="zoom-fit"]')?.addEventListener('click', () => this.setZoom(1))
         const presetSelect = this.container.querySelector<HTMLSelectElement>('[data-input="preset"]')
         presetSelect?.addEventListener('change', (e) => {
             const val = (e.target as HTMLSelectElement).value
@@ -306,10 +310,36 @@ export class QRLayoutDesigner {
         if (ctrl && e.key === 'z' && !e.shiftKey) { e.preventDefault(); this.undo() }
         else if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); this.redo() }
         else if (ctrl && e.key === 'a') { e.preventDefault(); this.selectAll() }
+        else if (ctrl && e.key === 'c' && this.selectedIds.size > 0) { e.preventDefault(); this.copySelected() }
+        else if (ctrl && e.key === 'v' && this.clipboard.length > 0) { e.preventDefault(); this.pasteClipboard() }
         else if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedIds.size > 0) { e.preventDefault(); this.deleteSelectedElement() }
         else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && this.selectedIds.size > 0) { e.preventDefault(); this.nudgeSelected(e.key, e.shiftKey ? 5 : 1) }
         else if (ctrl && e.key === 'd' && this.selectedIds.size > 0) { e.preventDefault(); this.duplicateSelected() }
         else if (e.key === 'Escape') { this.selectElement(null) }
+    }
+
+    private clipboard: StickerElement[] = []
+
+    private copySelected(): void {
+        this.clipboard = this.state.layout.elements
+            .filter(el => this.selectedIds.has(el.id))
+            .map(el => JSON.parse(JSON.stringify(el)))
+    }
+
+    private pasteClipboard(): void {
+        if (this.clipboard.length === 0) return
+        this.state.snapshot()
+        const newEls = this.clipboard.map(el => ({
+            ...el,
+            id: el.type[0] + Date.now() + Math.random().toString(36).slice(2, 4),
+            x: el.x + 10,
+            y: el.y + 10
+        }))
+        this.state.layout.elements.push(...newEls)
+        this.selectedIds = new Set(newEls.map(e => e.id))
+        this.renderElementsList()
+        this.refreshPropertyPanel()
+        this.updatePreview()
     }
 
     private bindResizeObserver() {
@@ -478,6 +508,7 @@ export class QRLayoutDesigner {
 
         if (!this.canvasMgr.isDragging) {
             await this.canvasMgr.render(this.layout, sampleData)
+            this.applyCanvasZoom()
         }
 
         this.refreshOverlay()
@@ -490,6 +521,20 @@ export class QRLayoutDesigner {
             this._previewTimer = null
             this.updatePreview()
         }, 80)
+    }
+
+    private applyCanvasZoom(): void {
+        if (!this.canvasMgr.canvas) return
+        const z = this.zoom
+        this.canvasMgr.canvas.style.width = `${this.canvasMgr.canvas.width * z}px`
+        this.canvasMgr.canvas.style.height = `${this.canvasMgr.canvas.height * z}px`
+        const level = this.container.querySelector<HTMLElement>('[data-el="zoom-level"]')
+        if (level) level.textContent = `${Math.round(z * 100)}%`
+    }
+
+    private setZoom(z: number): void {
+        this.zoom = Math.min(3, Math.max(0.3, z))
+        this.updatePreview()
     }
 
     private undo(): void {
