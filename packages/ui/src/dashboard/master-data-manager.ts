@@ -58,7 +58,7 @@ export class MasterDataManagerView {
 
     /** Types that support Code for Serial number and Code for Batch number */
     private supportsSerialAndBatchCode(): boolean {
-        return ['plant', 'vendor', 'financial_year', 'month', 'category', 'group'].includes(this.activeType);
+        return ['plant', 'vendor', 'financial_year', 'month', 'date', 'category', 'group'].includes(this.activeType);
     }
 
     private getSubheading(): string {
@@ -71,6 +71,8 @@ export class MasterDataManagerView {
                 return 'Financial year codes with serial and batch tracking codes for fiscal accounting.';
             case 'month':
                 return 'Standard calendar months with serial code and batch code for date-based serialization.';
+            case 'date':
+                return 'Days of a month (01–31) with serial code and batch code for day-based serialization.';
             case 'category':
                 return 'Product categories with serial and batch code segments.';
             case 'group':
@@ -92,6 +94,7 @@ export class MasterDataManagerView {
             case 'vendor': return 'e.g. V1 / V2';
             case 'financial_year': return 'e.g. 25 / 26';
             case 'month': return 'e.g. 01 / JAN';
+            case 'date': return 'e.g. 01 / 15 / 31';
             case 'category': return 'e.g. FC / SW';
             case 'group': return 'e.g. SH / MX';
             default: return 'e.g. SN-01';
@@ -104,6 +107,7 @@ export class MasterDataManagerView {
             case 'vendor': return 'e.g. VB1 / VB2';
             case 'financial_year': return 'e.g. F25 / F26';
             case 'month': return 'e.g. M01 / JAN';
+            case 'date': return 'e.g. D01 / D15 / D31';
             case 'category': return 'e.g. BFC / BSW';
             case 'group': return 'e.g. BSH / BMX';
             default: return 'e.g. BT-01';
@@ -499,6 +503,7 @@ export class MasterDataManagerView {
                                 { checkboxId: 'inc-sl-plant', padId: 'pad-sl-plant', title: 'Plant Serial Code', active: { code: mapping.plant.code, badge: 'badge-emerald' }, manage: { tab: 'plant', label: 'in Plants Master' }, checked: rule.inclusions.includePlant, pad: rule.segmentPadding?.plant ?? rule.sequencePadding, segKey: 'plant' },
                                 { checkboxId: 'inc-sl-fy', padId: 'pad-sl-fy', title: 'Financial Year Serial Code', active: { code: mapping.financialYear.code, badge: 'badge-indigo' }, manage: { tab: 'financial_year', label: 'in FY Master' }, checked: rule.inclusions.includeFinancialYear, pad: rule.segmentPadding?.financial_year ?? rule.sequencePadding, segKey: 'financial_year' },
                                 { checkboxId: 'inc-sl-month', padId: 'pad-sl-month', title: 'Month Serial Code', active: { code: mapping.month.code, badge: 'badge-cyan' }, manage: { tab: 'month', label: 'in Months Master' }, checked: rule.inclusions.includeMonth, pad: rule.segmentPadding?.month ?? rule.sequencePadding, segKey: 'month' },
+                                { checkboxId: 'inc-sl-date', padId: 'pad-sl-date', title: 'Day Serial Code', active: { code: mapping.date.code, badge: 'badge-cyan' }, manage: { tab: 'date', label: 'in Dates Master' }, checked: rule.inclusions.includeDate, pad: rule.segmentPadding?.date ?? rule.sequencePadding, segKey: 'date' },
                                 { checkboxId: 'inc-sl-category', padId: 'pad-sl-category', title: 'Category Serial Code', active: { code: mapping.category.code, badge: 'badge-emerald' }, manage: { tab: 'category', label: 'in Categories' }, checked: rule.inclusions.includeCategory, pad: rule.segmentPadding?.category ?? rule.sequencePadding, segKey: 'category' },
                                 { checkboxId: 'inc-sl-group', padId: 'pad-sl-group', title: 'Group Serial Code', active: { code: mapping.group.code, badge: 'badge-emerald' }, manage: { tab: 'group', label: 'in Groups' }, checked: rule.inclusions.includeGroup, pad: rule.segmentPadding?.group ?? rule.sequencePadding, segKey: 'group' },
                                 { checkboxId: 'inc-sl-vendor', padId: 'pad-sl-vendor', title: 'Vendor Serial Code', active: { code: mapping.vendor.code, badge: 'badge-neutral' }, manage: { tab: 'vendor', label: 'in Vendors' }, checked: rule.inclusions.includeVendor, pad: rule.segmentPadding?.vendor ?? rule.sequencePadding, segKey: 'vendor' },
@@ -648,12 +653,14 @@ export class MasterDataManagerView {
                     group: parseInt((this.container.querySelector('#pad-sl-group') as HTMLInputElement)?.value || '', 10),
                     vendor: parseInt((this.container.querySelector('#pad-sl-vendor') as HTMLInputElement)?.value || '', 10),
                     color: parseInt((this.container.querySelector('#pad-sl-color') as HTMLInputElement)?.value || '', 10),
-                    sku: parseInt((this.container.querySelector('#pad-sl-sku') as HTMLInputElement)?.value || '', 10)
+                    sku: parseInt((this.container.querySelector('#pad-sl-sku') as HTMLInputElement)?.value || '', 10),
+                    date: parseInt((this.container.querySelector('#pad-sl-date') as HTMLInputElement)?.value || '', 10)
                 },
                 inclusions: {
                     includePlant: (this.container.querySelector('#inc-sl-plant') as HTMLInputElement).checked,
                     includeFinancialYear: (this.container.querySelector('#inc-sl-fy') as HTMLInputElement).checked,
                     includeMonth: (this.container.querySelector('#inc-sl-month') as HTMLInputElement).checked,
+                    includeDate: (this.container.querySelector('#inc-sl-date') as HTMLInputElement).checked,
                     includeCategory: (this.container.querySelector('#inc-sl-category') as HTMLInputElement).checked,
                     includeGroup: (this.container.querySelector('#inc-sl-group') as HTMLInputElement).checked,
                     includeSku: (this.container.querySelector('#inc-sl-sku') as HTMLInputElement).checked,
@@ -704,12 +711,14 @@ export class MasterDataManagerView {
                     group: padOf('pad-sl-group'),
                     vendor: padOf('pad-sl-vendor'),
                     color: padOf('pad-sl-color'),
-                    sku: padOf('pad-sl-sku')
+                    sku: padOf('pad-sl-sku'),
+                    date: padOf('pad-sl-date')
                 },
                 inclusions: {
                     includePlant: (this.container.querySelector('#inc-sl-plant') as HTMLInputElement).checked,
                     includeFinancialYear: (this.container.querySelector('#inc-sl-fy') as HTMLInputElement).checked,
                     includeMonth: (this.container.querySelector('#inc-sl-month') as HTMLInputElement).checked,
+                    includeDate: (this.container.querySelector('#inc-sl-date') as HTMLInputElement).checked,
                     includeCategory: (this.container.querySelector('#inc-sl-category') as HTMLInputElement).checked,
                     includeGroup: (this.container.querySelector('#inc-sl-group') as HTMLInputElement).checked,
                     includeSku: (this.container.querySelector('#inc-sl-sku') as HTMLInputElement).checked,
@@ -856,6 +865,7 @@ export class MasterDataManagerView {
                                 { checkboxId: 'inc-bl-vendor', padId: 'pad-bl-vendor', title: 'Vendor Batch Code', active: { code: mapping.vendor.code, badge: 'badge-neutral' }, manage: { tab: 'vendor', label: 'in Vendors' }, checked: rule.inclusions.includeVendor, pad: rule.segmentPadding?.vendor ?? rule.sequencePadding, segKey: 'vendor' },
                                 { checkboxId: 'inc-bl-fy', padId: 'pad-bl-fy', title: 'Financial Year Batch Code', active: { code: mapping.financialYear.code, badge: 'badge-indigo' }, manage: { tab: 'financial_year', label: 'in FY Master' }, checked: rule.inclusions.includeFinancialYear, pad: rule.segmentPadding?.financial_year ?? rule.sequencePadding, segKey: 'financial_year' },
                                 { checkboxId: 'inc-bl-month', padId: 'pad-bl-month', title: 'Month Batch Code', active: { code: mapping.month.code, badge: 'badge-cyan' }, manage: { tab: 'month', label: 'in Months Master' }, checked: rule.inclusions.includeMonth, pad: rule.segmentPadding?.month ?? rule.sequencePadding, segKey: 'month' },
+                                { checkboxId: 'inc-bl-date', padId: 'pad-bl-date', title: 'Day Batch Code', active: { code: mapping.date.code, badge: 'badge-cyan' }, manage: { tab: 'date', label: 'in Dates Master' }, checked: rule.inclusions.includeDate, pad: rule.segmentPadding?.date ?? rule.sequencePadding, segKey: 'date' },
                                 { checkboxId: 'inc-bl-category', padId: 'pad-bl-category', title: 'Category Batch Code', active: { code: mapping.category.code, badge: 'badge-emerald' }, manage: { tab: 'category', label: 'in Categories' }, checked: rule.inclusions.includeCategory, pad: rule.segmentPadding?.category ?? rule.sequencePadding, segKey: 'category' },
                                 { checkboxId: 'inc-bl-group', padId: 'pad-bl-group', title: 'Group Batch Code', active: { code: mapping.group.code, badge: 'badge-emerald' }, manage: { tab: 'group', label: 'in Groups' }, checked: rule.inclusions.includeGroup, pad: rule.segmentPadding?.group ?? rule.sequencePadding, segKey: 'group' },
                                 { checkboxId: 'inc-bl-shift', padId: 'pad-bl-shift', title: 'Production Shift Identifier', desc: 'Shift Tag: A / B / C', checked: rule.inclusions.includeShift, pad: rule.sequencePadding, noPad: true, segKey: 'shift' }
@@ -972,13 +982,15 @@ export class MasterDataManagerView {
                     financial_year: parseInt((this.container.querySelector('#pad-bl-fy') as HTMLInputElement)?.value || '', 10),
                     month: parseInt((this.container.querySelector('#pad-bl-month') as HTMLInputElement)?.value || '', 10),
                     category: parseInt((this.container.querySelector('#pad-bl-category') as HTMLInputElement)?.value || '', 10),
-                    group: parseInt((this.container.querySelector('#pad-bl-group') as HTMLInputElement)?.value || '', 10)
+                    group: parseInt((this.container.querySelector('#pad-bl-group') as HTMLInputElement)?.value || '', 10),
+                    date: parseInt((this.container.querySelector('#pad-bl-date') as HTMLInputElement)?.value || '', 10)
                 },
                 inclusions: {
                     includeCustomPrefix: (this.container.querySelector('#inc-bl-prefix') as HTMLInputElement).checked,
                     includePlant: (this.container.querySelector('#inc-bl-plant') as HTMLInputElement).checked,
                     includeFinancialYear: (this.container.querySelector('#inc-bl-fy') as HTMLInputElement).checked,
                     includeMonth: (this.container.querySelector('#inc-bl-month') as HTMLInputElement).checked,
+                    includeDate: (this.container.querySelector('#inc-bl-date') as HTMLInputElement).checked,
                     includeCategory: (this.container.querySelector('#inc-bl-category') as HTMLInputElement).checked,
                     includeGroup: (this.container.querySelector('#inc-bl-group') as HTMLInputElement).checked,
                     includeShift: (this.container.querySelector('#inc-bl-shift') as HTMLInputElement).checked,
@@ -1022,13 +1034,15 @@ export class MasterDataManagerView {
                     financial_year: padOf('pad-bl-fy'),
                     month: padOf('pad-bl-month'),
                     category: padOf('pad-bl-category'),
-                    group: padOf('pad-bl-group')
+                    group: padOf('pad-bl-group'),
+                    date: padOf('pad-bl-date')
                 },
                 inclusions: {
                     includeCustomPrefix: (this.container.querySelector('#inc-bl-prefix') as HTMLInputElement).checked,
                     includePlant: (this.container.querySelector('#inc-bl-plant') as HTMLInputElement).checked,
                     includeFinancialYear: (this.container.querySelector('#inc-bl-fy') as HTMLInputElement).checked,
                     includeMonth: (this.container.querySelector('#inc-bl-month') as HTMLInputElement).checked,
+                    includeDate: (this.container.querySelector('#inc-bl-date') as HTMLInputElement).checked,
                     includeCategory: (this.container.querySelector('#inc-bl-category') as HTMLInputElement).checked,
                     includeGroup: (this.container.querySelector('#inc-bl-group') as HTMLInputElement).checked,
                     includeShift: (this.container.querySelector('#inc-bl-shift') as HTMLInputElement).checked,

@@ -5,7 +5,7 @@
 // Supabase (`master_data` table) with a localStorage offline cache.
 // ════════════════════════════════════════════════════════════════════════════
 
-export type MasterDataType = 'plant' | 'vendor' | 'financial_year' | 'month' | 'category' | 'group' | 'color' | 'warranty' | 'variable' | 'serial_logic' | 'batch_logic';
+export type MasterDataType = 'plant' | 'vendor' | 'financial_year' | 'month' | 'date' | 'category' | 'group' | 'color' | 'warranty' | 'variable' | 'serial_logic' | 'batch_logic';
 
 export interface MasterDataOption {
     code: string;           // unique id used in dropdowns / stored on products
@@ -58,6 +58,11 @@ const DEFAULT_DATA: MasterDataOption[] = [
     { code: '10', label: 'October', type: 'month', serialCode: '10', batchCode: 'M10' },
     { code: '11', label: 'November', type: 'month', serialCode: '11', batchCode: 'M11' },
     { code: '12', label: 'December', type: 'month', serialCode: '12', batchCode: 'M12' },
+    // Dates (days of a month, 01–31; with serial/batch codes)
+    ...Array.from({ length: 31 }, (_, i) => {
+        const d = String(i + 1).padStart(2, '0');
+        return { code: d, label: `Day ${d}`, type: 'date' as MasterDataType, serialCode: d, batchCode: `D${d}` };
+    }),
     // Product categories (with serialCode, batchCode)
     { code: 'faucet', label: 'Faucets & Fittings', type: 'category', serialCode: 'FC', batchCode: 'BFC' },
     { code: 'sanitaryware', label: 'Sanitaryware & Bathware', type: 'category', serialCode: 'SW', batchCode: 'BSW' },
@@ -158,6 +163,7 @@ export const MASTER_DATA_TYPES: { type: MasterDataType; label: string; icon: str
     { type: 'vendor', label: 'Vendors', icon: '🏬' },
     { type: 'financial_year', label: 'Financial Years', icon: '📅' },
     { type: 'month', label: 'Months', icon: '🗓️' },
+    { type: 'date', label: 'Dates', icon: '📅' },
     { type: 'category', label: 'Product Categories', icon: '🗂️' },
     { type: 'group', label: 'Product Groups', icon: '📦' },
     { type: 'color', label: 'Color / Finish', icon: '🎨' },

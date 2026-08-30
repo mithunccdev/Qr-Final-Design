@@ -14,6 +14,7 @@ export type SerialSegmentType =
     | 'vendor'
     | 'financial_year'
     | 'month'
+    | 'date'
     | 'category'
     | 'group'
     | 'sku'
@@ -26,6 +27,7 @@ export type BatchSegmentType =
     | 'vendor'
     | 'financial_year'
     | 'month'
+    | 'date'
     | 'category'
     | 'group'
     | 'shift'
@@ -49,6 +51,7 @@ export interface SerialNumberLogicRule {
         includeVendor: boolean;
         includeFinancialYear: boolean;
         includeMonth: boolean;
+        includeDate: boolean;
         includeCategory: boolean;
         includeGroup: boolean;
         includeSku: boolean;
@@ -78,6 +81,7 @@ export interface BatchNumberLogicRule {
         includeVendor: boolean;
         includeFinancialYear: boolean;
         includeMonth: boolean;
+        includeDate: boolean;
         includeCategory: boolean;
         includeGroup: boolean;
         includeShift: boolean;
@@ -110,6 +114,7 @@ export const DEFAULT_SERIAL_RULES: SerialNumberLogicRule[] = [
             includeVendor: false,
             includeFinancialYear: true,
             includeMonth: true,
+            includeDate: false,
             includeCategory: true,
             includeGroup: false,
             includeSku: false,
@@ -135,6 +140,7 @@ export const DEFAULT_SERIAL_RULES: SerialNumberLogicRule[] = [
             includeVendor: false,
             includeFinancialYear: true,
             includeMonth: true,
+            includeDate: false,
             includeCategory: true,
             includeGroup: false,
             includeSku: false,
@@ -160,6 +166,7 @@ export const DEFAULT_SERIAL_RULES: SerialNumberLogicRule[] = [
             includeVendor: false,
             includeFinancialYear: true,
             includeMonth: true,
+            includeDate: false,
             includeCategory: true,
             includeGroup: false,
             includeSku: false,
@@ -185,6 +192,7 @@ export const DEFAULT_SERIAL_RULES: SerialNumberLogicRule[] = [
             includeVendor: false,
             includeFinancialYear: true,
             includeMonth: true,
+            includeDate: false,
             includeCategory: true,
             includeGroup: false,
             includeSku: false,
@@ -213,6 +221,7 @@ export const DEFAULT_BATCH_RULES: BatchNumberLogicRule[] = [
             includeVendor: false,
             includeFinancialYear: true,
             includeMonth: true,
+            includeDate: false,
             includeCategory: false,
             includeGroup: false,
             includeShift: false
@@ -237,6 +246,7 @@ export const DEFAULT_BATCH_RULES: BatchNumberLogicRule[] = [
             includeVendor: false,
             includeFinancialYear: true,
             includeMonth: true,
+            includeDate: false,
             includeCategory: false,
             includeGroup: false,
             includeShift: false
@@ -382,6 +392,16 @@ export function resolveMonthCode(date = new Date(), forBatch = false): string {
     return mNum;
 }
 
+export function resolveDateCode(date = new Date(), forBatch = false): string {
+    const dNum = String(date.getDate()).padStart(2, '0');
+    const days = getMasterData('date');
+    const match = days.find(d => d.code === dNum);
+    if (match) {
+        return forBatch ? (match.batchCode || dNum) : (match.serialCode || dNum);
+    }
+    return dNum;
+}
+
 export function resolveCategoryCode(category: string, forBatch = false): string {
     if (!category) return '';
     const cats = getMasterData('category');
@@ -416,6 +436,7 @@ export interface MasterCodeResolutionSummary {
     plant: { code: string; masterTab: 'plant'; label: string };
     financialYear: { code: string; masterTab: 'financial_year'; label: string };
     month: { code: string; masterTab: 'month'; label: string };
+    date: { code: string; masterTab: 'date'; label: string };
     category: { code: string; masterTab: 'category'; label: string };
     group: { code: string; masterTab: 'group'; label: string };
     vendor: { code: string; masterTab: 'vendor'; label: string };
@@ -439,6 +460,11 @@ export function getMasterCodesMapping(plant = 'KSPL', forBatch = false): MasterC
             code: resolveMonthCode(now, forBatch),
             masterTab: 'month',
             label: 'Month Master'
+        },
+        date: {
+            code: resolveDateCode(now, forBatch),
+            masterTab: 'date',
+            label: 'Date Master'
         },
         category: {
             code: resolveCategoryCode('faucet', forBatch),
@@ -493,6 +519,7 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
         vendor: padFor('vendor', resolveVendorCode(ctx.vendor ?? 'V1', false)),
         financial_year: padFor('financial_year', resolveFinancialYearCode(date, false)),
         month: padFor('month', resolveMonthCode(date, false)),
+        date: padFor('date', resolveDateCode(date, false)),
         category: padFor('category', resolveCategoryCode(prod.category || 'faucet', false)),
         group: padFor('group', resolveGroupCode(prod.group || 'mixer', false)),
         sku: padFor('sku', prod.sku ? prod.sku.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase() : '0001'),
@@ -508,6 +535,7 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
             case 'vendor': return rule.inclusions.includeVendor && !!segmentValues.vendor;
             case 'financial_year': return rule.inclusions.includeFinancialYear && !!segmentValues.financial_year;
             case 'month': return rule.inclusions.includeMonth && !!segmentValues.month;
+            case 'date': return rule.inclusions.includeDate && !!segmentValues.date;
             case 'category': return rule.inclusions.includeCategory && !!segmentValues.category;
             case 'group': return rule.inclusions.includeGroup && !!segmentValues.group;
             case 'sku': return rule.inclusions.includeSku && !!segmentValues.sku;
@@ -518,7 +546,7 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
 
     // Order = the user's configured segmentOrder (re-ordered in the UI), then any
     // other checked/master segment is auto-appended so it always appears in the serial.
-    const SERIAL_PRIORITY: SerialSegmentType[] = ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'category', 'group', 'sku', 'color', 'sequence'];
+    const SERIAL_PRIORITY: SerialSegmentType[] = ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'date', 'category', 'group', 'sku', 'color', 'sequence'];
     const activeOrder: SerialSegmentType[] = [];
     for (const seg of rule.segmentOrder) if (!activeOrder.includes(seg)) activeOrder.push(seg);
     for (const seg of SERIAL_PRIORITY) if (!activeOrder.includes(seg) && included(seg)) activeOrder.push(seg);
@@ -563,6 +591,7 @@ export function generateBatchNumberPreview(rule: BatchNumberLogicRule, ctx: Batc
         vendor: padFor('vendor', resolveVendorCode(ctx.vendor ?? 'VB1', true)),
         financial_year: padFor('financial_year', resolveFinancialYearCode(date, true)),
         month: padFor('month', resolveMonthCode(date, true)),
+        date: padFor('date', resolveDateCode(date, true)),
         category: padFor('category', resolveCategoryCode(prod.category || 'faucet', true)),
         group: padFor('group', resolveGroupCode(prod.group || 'mixer', true)),
         shift: (ctx.shift || 'A').slice(-1),
@@ -577,6 +606,7 @@ export function generateBatchNumberPreview(rule: BatchNumberLogicRule, ctx: Batc
             case 'vendor': return rule.inclusions.includeVendor && !!segmentValues.vendor;
             case 'financial_year': return rule.inclusions.includeFinancialYear && !!segmentValues.financial_year;
             case 'month': return rule.inclusions.includeMonth && !!segmentValues.month;
+            case 'date': return rule.inclusions.includeDate && !!segmentValues.date;
             case 'category': return rule.inclusions.includeCategory && !!segmentValues.category;
             case 'group': return rule.inclusions.includeGroup && !!segmentValues.group;
             case 'shift': return rule.inclusions.includeShift && !!segmentValues.shift;
@@ -584,7 +614,7 @@ export function generateBatchNumberPreview(rule: BatchNumberLogicRule, ctx: Batc
         }
     };
 
-    const BATCH_PRIORITY: BatchSegmentType[] = ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'category', 'group', 'shift', 'sequence'];
+    const BATCH_PRIORITY: BatchSegmentType[] = ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'date', 'category', 'group', 'shift', 'sequence'];
     const activeOrder: BatchSegmentType[] = [];
     for (const seg of rule.segmentOrder) if (!activeOrder.includes(seg)) activeOrder.push(seg);
     for (const seg of BATCH_PRIORITY) if (!activeOrder.includes(seg) && included(seg)) activeOrder.push(seg);
