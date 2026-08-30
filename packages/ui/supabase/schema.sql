@@ -322,6 +322,8 @@ create table if not exists public.products (
     id                   text primary key,
     sku                  text not null unique,
     title                text not null,
+    catalog_code         text default '',
+    short_code           text default '',
     category             text default 'General',
     plant                text default 'KSPL',
     group_name           text default 'Bathware',
@@ -345,6 +347,8 @@ create table if not exists public.products (
 
 alter table public.products add column if not exists sku text;
 alter table public.products add column if not exists title text;
+alter table public.products add column if not exists catalog_code text default '';
+alter table public.products add column if not exists short_code text default '';
 alter table public.products add column if not exists category text default 'General';
 alter table public.products add column if not exists plant text default 'KSPL';
 alter table public.products add column if not exists group_name text default 'Bathware';

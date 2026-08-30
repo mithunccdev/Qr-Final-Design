@@ -508,7 +508,9 @@ export class MasterDataManagerView {
                                 { checkboxId: 'inc-sl-group', padId: 'pad-sl-group', title: 'Group Serial Code', active: { code: mapping.group.code, badge: 'badge-emerald' }, manage: { tab: 'group', label: 'in Groups' }, checked: rule.inclusions.includeGroup, pad: rule.segmentPadding?.group ?? rule.sequencePadding, segKey: 'group' },
                                 { checkboxId: 'inc-sl-vendor', padId: 'pad-sl-vendor', title: 'Vendor Serial Code', active: { code: mapping.vendor.code, badge: 'badge-neutral' }, manage: { tab: 'vendor', label: 'in Vendors' }, checked: rule.inclusions.includeVendor, pad: rule.segmentPadding?.vendor ?? rule.sequencePadding, segKey: 'vendor' },
                                 { checkboxId: 'inc-sl-color', padId: 'pad-sl-color', title: 'Color / Finish Code', active: { code: mapping.color.code, badge: 'badge-amber' }, manage: { tab: 'color', label: 'in Colors' }, checked: rule.inclusions.includeColor, pad: rule.segmentPadding?.color ?? rule.sequencePadding, segKey: 'color' },
-                                { checkboxId: 'inc-sl-sku', padId: 'pad-sl-sku', title: 'Product SKU Segment', desc: 'Alphanumeric suffix from Product SKU', checked: rule.inclusions.includeSku, pad: rule.segmentPadding?.sku ?? rule.sequencePadding, segKey: 'sku' }
+                                { checkboxId: 'inc-sl-sku', padId: 'pad-sl-sku', title: 'Product SKU Segment', desc: 'Alphanumeric suffix from Product SKU', checked: rule.inclusions.includeSku, pad: rule.segmentPadding?.sku ?? rule.sequencePadding, segKey: 'sku' },
+                                { checkboxId: 'inc-sl-short', padId: 'pad-sl-short', title: 'Product Short Code', desc: 'Short code from the Product master', checked: rule.inclusions.includeShortCode, pad: rule.segmentPadding?.short_code ?? rule.sequencePadding, segKey: 'short_code' },
+                                { checkboxId: 'inc-sl-catalog', padId: 'pad-sl-catalog', title: 'Catalog / Part Code', desc: 'Catalog code from the Product master', checked: rule.inclusions.includeCatalogCode, pad: rule.segmentPadding?.catalog_code ?? rule.sequencePadding, segKey: 'catalog_code' }
                             ])}
                         </div>
 
@@ -654,6 +656,8 @@ export class MasterDataManagerView {
                     vendor: parseInt((this.container.querySelector('#pad-sl-vendor') as HTMLInputElement)?.value || '', 10),
                     color: parseInt((this.container.querySelector('#pad-sl-color') as HTMLInputElement)?.value || '', 10),
                     sku: parseInt((this.container.querySelector('#pad-sl-sku') as HTMLInputElement)?.value || '', 10),
+                    short_code: parseInt((this.container.querySelector('#pad-sl-short') as HTMLInputElement)?.value || '', 10),
+                    catalog_code: parseInt((this.container.querySelector('#pad-sl-catalog') as HTMLInputElement)?.value || '', 10),
                     date: parseInt((this.container.querySelector('#pad-sl-date') as HTMLInputElement)?.value || '', 10)
                 },
                 inclusions: {
@@ -664,6 +668,8 @@ export class MasterDataManagerView {
                     includeCategory: (this.container.querySelector('#inc-sl-category') as HTMLInputElement).checked,
                     includeGroup: (this.container.querySelector('#inc-sl-group') as HTMLInputElement).checked,
                     includeSku: (this.container.querySelector('#inc-sl-sku') as HTMLInputElement).checked,
+                    includeShortCode: (this.container.querySelector('#inc-sl-short') as HTMLInputElement).checked,
+                    includeCatalogCode: (this.container.querySelector('#inc-sl-catalog') as HTMLInputElement).checked,
                     includeColor: (this.container.querySelector('#inc-sl-color') as HTMLInputElement).checked,
                     includeVendor: (this.container.querySelector('#inc-sl-vendor') as HTMLInputElement).checked,
                     includeCustomPrefix: (this.container.querySelector('#inc-sl-prefix') as HTMLInputElement).checked
@@ -712,7 +718,9 @@ export class MasterDataManagerView {
                     vendor: padOf('pad-sl-vendor'),
                     color: padOf('pad-sl-color'),
                     sku: padOf('pad-sl-sku'),
-                    date: padOf('pad-sl-date')
+                    short_code: padOf('pad-sl-short'),
+                    catalog_code: padOf('pad-sl-catalog'),
+                    date: parseInt((this.container.querySelector('#pad-sl-date') as HTMLInputElement)?.value || '', 10)
                 },
                 inclusions: {
                     includePlant: (this.container.querySelector('#inc-sl-plant') as HTMLInputElement).checked,
@@ -722,6 +730,8 @@ export class MasterDataManagerView {
                     includeCategory: (this.container.querySelector('#inc-sl-category') as HTMLInputElement).checked,
                     includeGroup: (this.container.querySelector('#inc-sl-group') as HTMLInputElement).checked,
                     includeSku: (this.container.querySelector('#inc-sl-sku') as HTMLInputElement).checked,
+                    includeShortCode: (this.container.querySelector('#inc-sl-short') as HTMLInputElement).checked,
+                    includeCatalogCode: (this.container.querySelector('#inc-sl-catalog') as HTMLInputElement).checked,
                     includeColor: (this.container.querySelector('#inc-sl-color') as HTMLInputElement).checked,
                     includeVendor: (this.container.querySelector('#inc-sl-vendor') as HTMLInputElement).checked,
                     includeCustomPrefix: (this.container.querySelector('#inc-sl-prefix') as HTMLInputElement).checked

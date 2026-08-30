@@ -38,6 +38,8 @@ export interface ProductRecord {
     id: string;
     sku: string; // Product Code (Unique SKU - First)
     title: string; // Product Name
+    catalogCode?: string; // Catalog / Part code
+    shortCode?: string; // Short code (usable in serial numbers)
     category: string; // Product Category
     plant?: 'KSPL' | 'KGPL' | 'KBPL' | string; // Manufacturing Plant
     group?: string; // Product Group
@@ -770,6 +772,18 @@ export class ProductManagerView {
                         </div>
                     </div>
 
+                    <!-- CATALOG CODE & SHORT CODE -->
+                    <div class="form-grid-2col">
+                        <div class="form-field-group">
+                            <label class="form-field-label">Catalog Code <span style="font-weight:400; color:var(--ink-muted); font-size:0.75rem;">(Part Code)</span></label>
+                            <input type="text" name="catalogCode" class="form-control-input font-mono" placeholder="e.g. CAT-1001" value="${existing ? existing.catalogCode || '' : ''}" />
+                        </div>
+                        <div class="form-field-group">
+                            <label class="form-field-label">Short Code <span style="font-weight:400; color:var(--ink-muted); font-size:0.75rem;">(used in serial numbers)</span></label>
+                            <input type="text" name="shortCode" class="form-control-input font-mono" placeholder="e.g. CS / RG" value="${existing ? existing.shortCode || '' : ''}" />
+                        </div>
+                    </div>
+
                     <!-- ROW 2: PRODUCT CATEGORY, THEN PLANT, THEN PRODUCT GROUP -->
                     <div class="form-grid-3col">
                         <div class="form-field-group">
@@ -971,6 +985,8 @@ export class ProductManagerView {
 
             const skuVal = (formData.get('sku') as string).trim();
             const titleVal = (formData.get('title') as string).trim();
+            const catalogCodeVal = (formData.get('catalogCode') as string).trim();
+            const shortCodeVal = (formData.get('shortCode') as string).trim();
             const categoryVal = (formData.get('category') as string).trim() || 'faucet';
             const plantVal = (formData.get('plant') as string).trim() || 'KSPL';
             const groupVal = (formData.get('group') as string).trim() || 'Bathware';
@@ -982,6 +998,8 @@ export class ProductManagerView {
             if (isEdit && existing) {
                 existing.sku = skuVal;
                 existing.title = titleVal;
+                existing.catalogCode = catalogCodeVal;
+                existing.shortCode = shortCodeVal;
                 existing.category = categoryVal;
                 existing.plant = plantVal;
                 existing.group = groupVal;
@@ -1003,6 +1021,8 @@ export class ProductManagerView {
                     id: `prod-${Date.now()}`,
                     sku: skuVal,
                     title: titleVal,
+                    catalogCode: catalogCodeVal,
+                    shortCode: shortCodeVal,
                     category: categoryVal,
                     plant: plantVal,
                     group: groupVal,
@@ -1059,7 +1079,7 @@ export class ProductManagerView {
                     <div class="csv-upload-dropzone" id="csv-dropzone">
                         <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                         <div class="dropzone-title">Drag and drop your <strong>.CSV</strong> file here, or click to browse</div>
-                        <div class="dropzone-sub">Supported columns: <code>Product Code</code>, <code>Product Name</code>, <code>Category</code>, <code>Plant</code>, <code>Group</code>, <code>Color</code>, <code>Warranty</code>, <code>DP</code>, <code>MRP</code>, <code>Description</code></div>
+                        <div class="dropzone-sub">Supported columns: <code>Product Code</code>, <code>Product Name</code>, <code>Category</code>, <code>Plant</code>, <code>Group</code>, <code>Color</code>, <code>Warranty</code>, <code>DP</code>, <code>MRP</code>, <code>Catalog Code</code>, <code>Short Code</code>, <code>Description</code></div>
                         <input type="file" id="input-bulk-csv-file" accept=".csv,text/csv" style="display:none;" />
                         <div style="margin-top: 12px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
                             <button type="button" class="btn btn-primary btn-sm" id="btn-browse-csv-file">📂 Browse File</button>
@@ -1190,6 +1210,8 @@ export class ProductManagerView {
         const dpIdx = headers.findIndex(h => h === 'dp' || h.includes('dealer') || h.includes('distributor') || h.includes('cost') || h === 'dealer price' || h === 'distributor price');
         const mrpIdx = headers.findIndex(h => h === 'mrp' || h.includes('retail') || h.includes('price') || h.includes('rate') || h === 'mrp price' || h === 'selling price');
         const descIdx = headers.findIndex(h => h.includes('desc') || h.includes('note') || h.includes('spec') || h.includes('detail'));
+        const catalogIdx = headers.findIndex(h => h.includes('catalog') || h.includes('part code'));
+        const shortIdx = headers.findIndex(h => h.includes('short') || h === 'shortcode');
 
         const knownIndices = new Set([codeIdx, nameIdx, catIdx, plantIdx, groupIdx, colorIdx, warrantyIdx, dpIdx, mrpIdx, descIdx]);
 
@@ -1258,6 +1280,8 @@ export class ProductManagerView {
 
             // 9. Description
             const description = descIdx !== -1 && cols[descIdx] ? cols[descIdx].trim() : '';
+            const catalogCode = catalogIdx !== -1 && cols[catalogIdx] ? cols[catalogIdx].trim() : '';
+            const shortCode = shortIdx !== -1 && cols[shortIdx] ? cols[shortIdx].trim() : '';
 
             // 10. Serial numbering fallback
             const serialPrefix = `${plant}-` || 'SN-';
@@ -1308,6 +1332,8 @@ export class ProductManagerView {
                 price: formatINR(mrp),
                 origPrice: formatINR(mrp),
                 description,
+                catalogCode,
+                shortCode,
                 serialPrefix,
                 nextSerialSequence,
                 serialPadding,
@@ -1453,20 +1479,22 @@ export class ProductManagerView {
             'Warranty',
             'DP',
             'MRP',
+            'Catalog Code',
+            'Short Code',
             'Description'
         ];
 
         const sampleRows = [
-            ['KA570027-RG', 'CeilingShower400mmx400mm(BrassRG)', 'faucet', 'KSPL', 'Bathware', 'RG', '10 Years', '21250', '21250', 'Ceiling shower 400x400 brass rose gold finish'],
-            ['AU/KIT', 'AURUM TOOL KIT', 'faucet', 'KGPL', 'Hardware', 'CP', '2 Years', '250', '500', 'Aurum complete plumbing fitting tool kit'],
-            ['BW3007', 'BLACK BUSH WASHER FOR SOLONOIDE VALVE', 'sanitaryware', 'KBPL', 'Plumbing', 'MB', '1 Year', '80', '160', 'Solenoid valve black bush washer EPDM'],
-            ['F-KA10000-CG', 'HOSE CHAIN 1.MTR -CG', 'faucet', 'KSPL', 'Bathware', 'CG', '5 Years', '420', '840', 'Hose chain 1 meter champagne gold'],
-            ['F-KA1000057-GM', 'HOSE CHAIN 1.MTR -GM', 'faucet', 'KGPL', 'Bathware', 'GM', '5 Years', '640', '1280', 'Hose chain 1 meter gun metal finish'],
-            ['F-KA1000057-RG', 'HOSE CHAIN 1.MTR -RG', 'faucet', 'KSPL', 'Bathware', 'RG', '5 Years', '420', '840', 'Hose chain 1 meter rose gold finish'],
-            ['F-KB2000733-BLK', 'Knob (Small)', 'faucet', 'KBPL', 'Bathware', 'MB', '3 Years', '900', '1800', 'Precision control knob small matte black'],
-            ['KS-SN-9010-W', 'Single Lever Basin Mixer White', 'faucet', 'KSPL', 'Mixers & Faucets', 'W', '10 Years', '4500', '8990', 'Premium single lever basin mixer alpine white finish'],
-            ['KG-SH-3040-MB', 'Overhead Rain Shower 300mm Matte Black', 'faucet', 'KGPL', 'Showers & Overheads', 'MB', '5 Years', '3200', '6400', 'Ultra-slim stainless steel 304 overhead rain shower'],
-            ['KB-WB-7720-W', 'Wall Hung Ceramic Basin 550mm', 'sanitaryware', 'KBPL', 'Washbasins', 'W', '10 Years', '2800', '5600', 'Vitreous china wall hung washbasin with overflow hole']
+            ['KA570027-RG', 'CeilingShower400mmx400mm(BrassRG)', 'faucet', 'KSPL', 'Bathware', 'RG', '10 Years', '21250', '21250', 'CAT-1001', 'CS', 'Ceiling shower 400x400 brass rose gold finish'],
+            ['AU/KIT', 'AURUM TOOL KIT', 'faucet', 'KGPL', 'Hardware', 'CP', '2 Years', '250', '500', 'CAT-1002', 'AT', 'Aurum complete plumbing fitting tool kit'],
+            ['BW3007', 'BLACK BUSH WASHER FOR SOLONOIDE VALVE', 'sanitaryware', 'KBPL', 'Plumbing', 'MB', '1 Year', '80', '160', 'CAT-1003', 'BB', 'Solenoid valve black bush washer EPDM'],
+            ['F-KA10000-CG', 'HOSE CHAIN 1.MTR -CG', 'faucet', 'KSPL', 'Bathware', 'CG', '5 Years', '420', '840', 'CAT-1004', 'HC', 'Hose chain 1 meter champagne gold'],
+            ['F-KA1000057-GM', 'HOSE CHAIN 1.MTR -GM', 'faucet', 'KGPL', 'Bathware', 'GM', '5 Years', '640', '1280', 'CAT-1005', 'HG', 'Hose chain 1 meter gun metal finish'],
+            ['F-KA1000057-RG', 'HOSE CHAIN 1.MTR -RG', 'faucet', 'KSPL', 'Bathware', 'RG', '5 Years', '420', '840', 'CAT-1006', 'HR', 'Hose chain 1 meter rose gold finish'],
+            ['F-KB2000733-BLK', 'Knob (Small)', 'faucet', 'KBPL', 'Bathware', 'MB', '3 Years', '900', '1800', 'CAT-1007', 'KN', 'Precision control knob small matte black'],
+            ['KS-SN-9010-W', 'Single Lever Basin Mixer White', 'faucet', 'KSPL', 'Mixers & Faucets', 'W', '10 Years', '4500', '8990', 'CAT-1008', 'SL', 'Premium single lever basin mixer alpine white finish'],
+            ['KG-SH-3040-MB', 'Overhead Rain Shower 300mm Matte Black', 'faucet', 'KGPL', 'Showers & Overheads', 'MB', '5 Years', '3200', '6400', 'CAT-1009', 'OS', 'Ultra-slim stainless steel 304 overhead rain shower'],
+            ['KB-WB-7720-W', 'Wall Hung Ceramic Basin 550mm', 'sanitaryware', 'KBPL', 'Washbasins', 'W', '10 Years', '2800', '5600', 'CAT-1010', 'WB', 'Vitreous china wall hung washbasin with overflow hole']
         ];
 
         const csvContent = [

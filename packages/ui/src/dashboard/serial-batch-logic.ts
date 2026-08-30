@@ -18,6 +18,8 @@ export type SerialSegmentType =
     | 'category'
     | 'group'
     | 'sku'
+    | 'short_code'
+    | 'catalog_code'
     | 'color'
     | 'sequence';
 
@@ -55,6 +57,8 @@ export interface SerialNumberLogicRule {
         includeCategory: boolean;
         includeGroup: boolean;
         includeSku: boolean;
+        includeShortCode: boolean;
+        includeCatalogCode: boolean;
         includeColor: boolean;
     };
     /** Individual zero-pad width per master-code segment (falls back to sequencePadding). */
@@ -118,6 +122,8 @@ export const DEFAULT_SERIAL_RULES: SerialNumberLogicRule[] = [
             includeCategory: true,
             includeGroup: false,
             includeSku: false,
+            includeShortCode: false,
+            includeCatalogCode: false,
             includeColor: false
         },
         segmentOrder: ['plant', 'financial_year', 'month', 'category', 'sequence'],
@@ -144,6 +150,8 @@ export const DEFAULT_SERIAL_RULES: SerialNumberLogicRule[] = [
             includeCategory: true,
             includeGroup: false,
             includeSku: false,
+            includeShortCode: false,
+            includeCatalogCode: false,
             includeColor: false
         },
         segmentOrder: ['plant', 'financial_year', 'month', 'category', 'sequence'],
@@ -170,6 +178,8 @@ export const DEFAULT_SERIAL_RULES: SerialNumberLogicRule[] = [
             includeCategory: true,
             includeGroup: false,
             includeSku: false,
+            includeShortCode: false,
+            includeCatalogCode: false,
             includeColor: false
         },
         segmentOrder: ['plant', 'financial_year', 'month', 'category', 'sequence'],
@@ -196,6 +206,8 @@ export const DEFAULT_SERIAL_RULES: SerialNumberLogicRule[] = [
             includeCategory: true,
             includeGroup: false,
             includeSku: false,
+            includeShortCode: false,
+            includeCatalogCode: false,
             includeColor: false
         },
         segmentOrder: ['plant', 'financial_year', 'month', 'category', 'sequence'],
@@ -523,6 +535,8 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
         category: padFor('category', resolveCategoryCode(prod.category || 'faucet', false)),
         group: padFor('group', resolveGroupCode(prod.group || 'mixer', false)),
         sku: padFor('sku', prod.sku ? prod.sku.replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase() : '0001'),
+        short_code: padFor('short_code', prod.shortCode || ''),
+        catalog_code: padFor('catalog_code', prod.catalogCode || ''),
         color: padFor('color', prod.color || ctx.color || 'CP'),
         sequence: padFor('sequence', seq)
     };
@@ -539,6 +553,8 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
             case 'category': return rule.inclusions.includeCategory && !!segmentValues.category;
             case 'group': return rule.inclusions.includeGroup && !!segmentValues.group;
             case 'sku': return rule.inclusions.includeSku && !!segmentValues.sku;
+            case 'short_code': return rule.inclusions.includeShortCode && !!segmentValues.short_code;
+            case 'catalog_code': return rule.inclusions.includeCatalogCode && !!segmentValues.catalog_code;
             case 'color': return rule.inclusions.includeColor && !!segmentValues.color;
             default: return false;
         }
@@ -546,7 +562,7 @@ export function generateSerialNumberPreview(rule: SerialNumberLogicRule, ctx: Se
 
     // Order = the user's configured segmentOrder (re-ordered in the UI), then any
     // other checked/master segment is auto-appended so it always appears in the serial.
-    const SERIAL_PRIORITY: SerialSegmentType[] = ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'date', 'category', 'group', 'sku', 'color', 'sequence'];
+    const SERIAL_PRIORITY: SerialSegmentType[] = ['custom_prefix', 'plant', 'vendor', 'financial_year', 'month', 'date', 'category', 'group', 'sku', 'short_code', 'catalog_code', 'color', 'sequence'];
     const activeOrder: SerialSegmentType[] = [];
     for (const seg of rule.segmentOrder) if (!activeOrder.includes(seg)) activeOrder.push(seg);
     for (const seg of SERIAL_PRIORITY) if (!activeOrder.includes(seg) && included(seg)) activeOrder.push(seg);
