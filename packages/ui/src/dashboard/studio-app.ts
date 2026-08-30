@@ -13,7 +13,7 @@ import { UserManagerView } from './user-manager';
 import { MasterDataManagerView } from './master-data-manager';
 import { mergeMasterDataFromDb } from './master-data';
 import { hydrateSerialLogicRulesFromDb, hydrateBatchLogicRulesFromDb } from './serial-batch-logic';
-import { hydrateRolePermissionsFromDb, hasPageAccess } from './permissions';
+import { hydrateRolePermissionsFromDb, hasPageAccess, hydrateRolesFromDb } from './permissions';
 import type { PageKey } from './permissions';
 import { AccessControlView } from './access-control';
 import { AuditLogView, PrintersView, PrintJobsView } from './settings-tools';
@@ -397,6 +397,7 @@ export class QRStudioApp {
 
         // Sync role permissions from DB so page/action access is identical everywhere.
         // After hydration, refresh nav visibility so restrictions apply immediately.
+        void hydrateRolesFromDb();
         void hydrateRolePermissionsFromDb().then(() => this.applyNavPermissions());
 
         // Sync company branding from DB

@@ -1386,6 +1386,48 @@ export class SupabaseService {
     }
 
     // ════════════════════════════════════════════════════════════════════════════
+    // CUSTOM ROLES
+    // ════════════════════════════════════════════════════════════════════════════
+    public async fetchRoles(): Promise<any[] | null> {
+        if (!this.client || !this.config.enabled) return null;
+        try {
+            const { data, error } = await this.client.from('roles').select('*').order('is_system', { ascending: false }).order('created_at', { ascending: true });
+            if (error) { console.warn('fetchRoles:', error.message); return null; }
+            return data || [];
+        } catch (e) {
+            return null;
+        }
+    }
+
+    public async saveRole(role: any): Promise<boolean> {
+        if (!this.client || !this.config.enabled) return false;
+        const by = this.currentUserProfile?.email || this.currentUserProfile?.id || null;
+        try {
+            const { error } = await this.client.from('roles').upsert({
+                id: role.id, name: role.name, description: role.description || '',
+                is_system: role.isSystem || false,
+                created_by: role.createdBy || by, updated_by: by, updated_at: new Date().toISOString()
+            });
+            return !error;
+        } catch (e) {
+            console.warn('saveRole:', e);
+            return false;
+        }
+    }
+
+    public async deleteRole(id: string): Promise<boolean> {
+        if (!this.client || !this.config.enabled) return false;
+        try {
+            await this.client.from('role_permissions').delete().eq('role', id);
+            const { error } = await this.client.from('roles').delete().eq('id', id);
+            return !error;
+        } catch (e) {
+            console.warn('deleteRole:', e);
+            return false;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
     // COMPANY BRANDING / WHITE-LABEL PROFILE
     // ════════════════════════════════════════════════════════════════════════════
     public async fetchCompanyProfile(): Promise<CompanyProfile | null> {

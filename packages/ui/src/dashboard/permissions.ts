@@ -69,6 +69,11 @@ function allFalse(): Record<PageKey, Record<PermissionAction, boolean>> {
     return m;
 }
 
+/** A blank (all-false) permission block — used for newly created roles. */
+export function blankPermissions(): Record<PageKey, Record<PermissionAction, boolean>> {
+    return allFalse();
+}
+
 /** Sensible defaults that mirror the previous hardcoded behaviour. */
 export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = (() => {
     const rp: RolePermissions = {};
@@ -191,6 +196,59 @@ export async function hydrateRolePermissionsFromDb(): Promise<void> {
     if (rows && rows.length > 0) {
         saveRolePermissions(rolePermissionsFromRows(rows));
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOM ROLES
+// ─────────────────────────────────────────────────────────────────────────────
+export interface RoleDef {
+    id: string;            // e.g. 'admin' | 'warehouse'
+    name: string;          // display name
+    description?: string;
+    isSystem?: boolean;
+}
+
+const STORAGE_KEY_ROLES = 'qrlayout_roles_v1';
+
+export const DEFAULT_ROLES: RoleDef[] = [
+    { id: 'admin', name: 'Administrator', description: 'Full system & user control.', isSystem: true },
+    { id: 'designer', name: 'Label Designer', description: 'Create & modify labels, templates, catalog.', isSystem: true },
+    { id: 'user', name: 'Print Operator', description: 'Print-only with restricted access.', isSystem: true }
+];
+
+export function loadRoles(): RoleDef[] {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY_ROLES);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+    } catch (e) {
+        console.warn('Failed loading roles', e);
+    }
+    return [...DEFAULT_ROLES];
+}
+
+export function saveRoles(roles: RoleDef[]): void {
+    try {
+        localStorage.setItem(STORAGE_KEY_ROLES, JSON.stringify(roles));
+    } catch (e) {
+        console.warn('Failed saving roles', e);
+    }
+}
+
+/** Hydrate roles from the DB into the local cache (DB wins). */
+export async function hydrateRolesFromDb(): Promise<void> {
+    const rows = await supabaseService.fetchRoles();
+    if (rows && rows.length > 0) {
+        saveRoles(rows.map((r: any) => ({ id: r.id, name: r.name, description: r.description || '', isSystem: !!r.is_system })));
+    }
+}
+
+/** Display label for a role id (falls back to the id). */
+export function roleLabel(id: string | undefined): string {
+    const r = loadRoles().find(x => x.id === id);
+    return (r?.name) || id || 'user';
 }
 
 export type { UserRole };

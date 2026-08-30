@@ -811,3 +811,42 @@ create policy "template_versions_insert" on public.template_versions
   for insert with check (public.is_designer());
 drop policy if exists "template_versions_delete" on public.template_versions;
 create policy "template_versions_delete" on public.template_versions for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 15. ROLES (custom roles for RBAC)
+--     System roles (admin/designer/user) are seeded; admins may add custom
+--     roles (e.g. "Warehouse", "QC", "Dispatch") that map to role_permissions.
+-- ════════════════════════════════════════════════════════════════════════════
+create table if not exists public.roles (
+    id          text primary key,
+    name        text not null,
+    description text default '',
+    is_system   boolean default false,
+    created_by  text,
+    updated_by  text,
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now()
+);
+
+-- Seed the three system roles (idempotent)
+insert into public.roles (id, name, description, is_system)
+values
+    ('admin', 'Administrator', 'Full system & user control.', true),
+    ('designer', 'Label Designer', 'Create & modify labels, templates, catalog.', true),
+    ('user', 'Print Operator', 'Print-only with restricted access.', true)
+on conflict (id) do nothing;
+
+drop trigger if exists trg_roles_updated_at on public.roles;
+create trigger trg_roles_updated_at before update on public.roles
+  for each row execute function public.set_updated_at();
+
+alter table public.roles enable row level security;
+
+drop policy if exists "roles_select" on public.roles;
+create policy "roles_select" on public.roles for select using (auth.role() = 'authenticated');
+drop policy if exists "roles_insert" on public.roles;
+create policy "roles_insert" on public.roles for insert with check (public.is_admin());
+drop policy if exists "roles_update" on public.roles;
+create policy "roles_update" on public.roles for update using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "roles_delete" on public.roles;
+create policy "roles_delete" on public.roles for delete using (public.is_admin());

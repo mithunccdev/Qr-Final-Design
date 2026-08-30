@@ -2,6 +2,7 @@ import { supabaseService, UserProfile, UserRole } from '../supabase';
 import { getAssignableTemplateCategories } from './templates-data';
 import { getMasterData } from './master-data';
 import { esc } from '../escape';
+import { loadRoles } from './permissions';
 
 export class UserManagerView {
     private container: HTMLElement;
@@ -311,9 +312,11 @@ export class UserManagerView {
                         <div class="form-group col-span-2">
                             <label style="font-weight: 700;">User Role &amp; Access Tier</label>
                             <select id="modal-user-role" style="font-weight: 600;">
-                                <option value="admin" ${user && user.role === 'admin' ? 'selected' : ''}>👑 Administrator (Full System &amp; User Control)</option>
-                                <option value="designer" ${user && user.role === 'designer' ? 'selected' : ''}>🎨 Label Designer (Create &amp; Modify All Templates)</option>
-                                <option value="user" ${!user || user.role === 'user' ? 'selected' : ''}>🖨️ Print Operator (Print-Only, Restricted Templates)</option>
+                                ${loadRoles().map(r => `
+                                    <option value="${esc(r.id)}" ${(user ? user.role : 'user') === r.id ? 'selected' : ''}>
+                                        ${r.isSystem ? '' : '✨ '}${esc(r.name)}${r.description ? ` (${esc(r.description)})` : ''}
+                                    </option>
+                                `).join('')}
                             </select>
                         </div>
 
