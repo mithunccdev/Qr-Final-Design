@@ -17,7 +17,9 @@ import { hydrateRolePermissionsFromDb, hasPageAccess, hydrateRolesFromDb } from 
 import type { PageKey } from './permissions';
 import { AccessControlView } from './access-control';
 import { AuditLogView, PrintersView, PrintJobsView } from './settings-tools';
+import { AnalyticsView } from './analytics';
 import { BrandingManagerView } from './branding-manager';
+import { LANGS, getLang, setLang, applyTranslations } from './i18n';
 import { loadCompanyProfile, logoBadgeHtml, CompanyProfile } from './branding';
 import { AuthView } from './auth-view';
 import { supabaseService, UserProfile, UserRole } from '../supabase';
@@ -29,7 +31,7 @@ export interface StudioAppOptions {
     initialMode?: StudioAppMode;
 }
 
-export type StudioAppMode = 'dashboard' | 'designer' | 'print' | 'library' | 'products' | 'serials' | 'batches' | 'employees' | 'settings' | 'users';
+export type StudioAppMode = 'dashboard' | 'analytics' | 'designer' | 'print' | 'library' | 'products' | 'serials' | 'batches' | 'employees' | 'settings' | 'users';
 
 export class QRStudioApp {
     private mountElement: HTMLElement;
@@ -50,6 +52,7 @@ export class QRStudioApp {
     private userManagerInstance: UserManagerView | null = null;
 
     private dashboardContainer!: HTMLDivElement;
+    private analyticsContainer!: HTMLDivElement;
     private designerContainer!: HTMLDivElement;
     private printContainer!: HTMLDivElement;
     private libraryContainer!: HTMLDivElement;
@@ -108,7 +111,7 @@ export class QRStudioApp {
     }
 
     private static readonly PAGE_BY_MODE: Record<string, PageKey> = {
-        dashboard: 'dashboard', designer: 'designer', print: 'print', library: 'templates',
+        dashboard: 'dashboard', analytics: 'dashboard', designer: 'designer', print: 'print', library: 'templates',
         products: 'products', serials: 'serials', batches: 'batches', employees: 'employees',
         users: 'users', settings: 'settings'
     };
@@ -192,7 +195,14 @@ export class QRStudioApp {
                             <span class="nav-item-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
                             </span>
-                            <span class="nav-item-label">Home</span>
+                            <span class="nav-item-label" data-i18n="nav.home">Home</span>
+                        </button>
+
+                        <button class="sidebar-nav-item ${this.activeMode === 'analytics' ? 'active' : ''}" data-mode="analytics" title="Analytics">
+                            <span class="nav-item-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16v-6"/><path d="M12 16V8"/><path d="M17 16v-3"/></svg>
+                            </span>
+                            <span class="nav-item-label" data-i18n="nav.analytics">Analytics</span>
                         </button>
                     </div>
 
@@ -205,7 +215,7 @@ export class QRStudioApp {
                                 <span class="nav-item-icon">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                                 </span>
-                                <span class="nav-item-label">Designer</span>
+                                <span class="nav-item-label" data-i18n="nav.designer">Designer</span>
                             </button>
                         ` : ''}
 
@@ -213,14 +223,14 @@ export class QRStudioApp {
                             <span class="nav-item-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                             </span>
-                            <span class="nav-item-label">Print</span>
+                            <span class="nav-item-label" data-i18n="nav.print">Print</span>
                         </button>
 
                         <button class="sidebar-nav-item ${this.activeMode === 'library' ? 'active' : ''}" data-mode="library" title="Template Library">
                             <span class="nav-item-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
                             </span>
-                            <span class="nav-item-label">Templates</span>
+                            <span class="nav-item-label" data-i18n="nav.templates">Templates</span>
                             ${isOperatorOnly ? '<span class="nav-item-badge badge-neutral">Assigned</span>' : ''}
                         </button>
                     </div>
@@ -233,28 +243,28 @@ export class QRStudioApp {
                             <span class="nav-item-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
                             </span>
-                            <span class="nav-item-label">Products</span>
+                            <span class="nav-item-label" data-i18n="nav.products">Products</span>
                         </button>
 
                         <button class="sidebar-nav-item ${this.activeMode === 'serials' ? 'active' : ''}" data-mode="serials" title="Serial Numbers Management">
                             <span class="nav-item-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></svg>
                             </span>
-                            <span class="nav-item-label">Serial Numbers</span>
+                            <span class="nav-item-label" data-i18n="nav.serials">Serial Numbers</span>
                         </button>
 
                         <button class="sidebar-nav-item ${this.activeMode === 'batches' ? 'active' : ''}" data-mode="batches" title="Batch Numbers &amp; Lots">
                             <span class="nav-item-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="m7 11 4-4-4-4"/><rect width="8" height="8" x="13" y="13" rx="2"/><path d="m17 21 4-4-4-4"/></svg>
                             </span>
-                            <span class="nav-item-label">Batch Numbers</span>
+                            <span class="nav-item-label" data-i18n="nav.batches">Batch Numbers</span>
                         </button>
 
                         <button class="sidebar-nav-item ${this.activeMode === 'employees' ? 'active' : ''}" data-mode="employees" title="Employee Directory">
                             <span class="nav-item-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                             </span>
-                            <span class="nav-item-label">People</span>
+                            <span class="nav-item-label" data-i18n="nav.people">People</span>
                         </button>
                     </div>
 
@@ -268,7 +278,7 @@ export class QRStudioApp {
                                 <span class="nav-item-icon">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
                                 </span>
-                                <span class="nav-item-label">Users</span>
+                                <span class="nav-item-label" data-i18n="nav.users">Users</span>
                             </button>
                             ` : ''}
 
@@ -277,7 +287,7 @@ export class QRStudioApp {
                                 <span class="nav-item-icon">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                                 </span>
-                                <span class="nav-item-label">Settings</span>
+                                <span class="nav-item-label" data-i18n="nav.settings">Settings</span>
                             </button>
                             ` : ''}
                         </div>
@@ -345,6 +355,7 @@ export class QRStudioApp {
                 <!-- MAIN WORKSPACE VIEWPORT PANES -->
                 <div class="studio-viewport-container">
                     <div class="studio-pane" id="pane-dashboard" style="display: ${this.activeMode === 'dashboard' ? 'flex' : 'none'};"></div>
+                    <div class="studio-pane" id="pane-analytics" style="display: ${this.activeMode === 'analytics' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-designer" style="display: ${this.activeMode === 'designer' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-print" style="display: ${this.activeMode === 'print' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-products" style="display: ${this.activeMode === 'products' ? 'flex' : 'none'};"></div>
@@ -360,6 +371,7 @@ export class QRStudioApp {
         `;
 
         this.dashboardContainer = this.mountElement.querySelector('#pane-dashboard') as HTMLDivElement;
+        this.analyticsContainer = this.mountElement.querySelector('#pane-analytics') as HTMLDivElement;
         this.designerContainer = this.mountElement.querySelector('#pane-designer') as HTMLDivElement;
         this.printContainer = this.mountElement.querySelector('#pane-print') as HTMLDivElement;
         this.productsContainer = this.mountElement.querySelector('#pane-products') as HTMLDivElement;
@@ -371,6 +383,7 @@ export class QRStudioApp {
         this.usersContainer = this.mountElement.querySelector('#pane-users') as HTMLDivElement;
 
         this.initDashboard();
+        this.initAnalytics();
         if (this.canAccess('designer')) this.initDesigner();
         this.initLibrary();
         this.initPrintDashboard();
@@ -406,6 +419,9 @@ export class QRStudioApp {
             if (p) { this.brandingProfile = p; this.applyBranding(false); }
         });
         window.addEventListener('qr-branding-updated', () => this.applyBranding());
+
+        // Apply interface-language translations to the current DOM
+        applyTranslations(this.mountElement);
     }
 
     private brandingProfile: CompanyProfile | null = null;
@@ -436,6 +452,10 @@ export class QRStudioApp {
         if (role === 'admin') return '#4f46e5';
         if (role === 'designer') return '#0ea5e9';
         return '#10b981';
+    }
+
+    private initAnalytics() {
+        if (this.analyticsContainer) new AnalyticsView({ container: this.analyticsContainer });
     }
 
     private initDashboard() {
@@ -701,6 +721,25 @@ export class QRStudioApp {
                 </div>
 
                 <div style="padding: 24px; display: flex; flex-direction: column; gap: 24px;">
+                    <!-- SECTION 0: LANGUAGE -->
+                    <div class="settings-section-card">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                            <span style="font-size: 1.25rem;">🌐</span>
+                            <h3 style="font-size: 1rem; font-weight: 700; margin: 0; color: var(--text-primary);">Workspace Language</h3>
+                        </div>
+                        <div class="modal-form-grid" style="padding: 0;">
+                            <div class="form-group">
+                                <label style="font-weight: 700;">Interface Language</label>
+                                <select id="setting-lang">
+                                    ${LANGS.map(l => `<option value="${l.key}" ${getLang() === l.key ? 'selected' : ''}>${l.label}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group" style="display:flex;align-items:flex-end;">
+                                <button class="btn btn-primary" id="btn-save-lang">💾 Apply Language</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- SECTION 1: SUPABASE CLOUD & SELF-HOSTED DATABASE -->
                     <div class="settings-section-card">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
@@ -813,6 +852,13 @@ export class QRStudioApp {
         });
 
         // Save Settings
+        this.settingsContainer.querySelector('#btn-save-lang')?.addEventListener('click', () => {
+            const lang = (this.settingsContainer.querySelector('#setting-lang') as HTMLSelectElement).value as any;
+            setLang(lang);
+            alert('Language updated. Reloading the workspace…');
+            setTimeout(() => window.location.reload(), 600);
+        });
+
         this.settingsContainer.querySelector('#btn-save-settings')?.addEventListener('click', () => {
             const url = (this.settingsContainer.querySelector('#setting-supabase-url') as HTMLInputElement).value.trim();
             const key = (this.settingsContainer.querySelector('#setting-supabase-key') as HTMLInputElement).value.trim();
@@ -894,6 +940,7 @@ export class QRStudioApp {
         });
 
         if (this.dashboardContainer) this.dashboardContainer.style.display = mode === 'dashboard' ? 'flex' : 'none';
+        if (this.analyticsContainer) this.analyticsContainer.style.display = mode === 'analytics' ? 'flex' : 'none';
         if (this.designerContainer) this.designerContainer.style.display = mode === 'designer' ? 'flex' : 'none';
         if (this.printContainer) this.printContainer.style.display = mode === 'print' ? 'flex' : 'none';
         if (this.productsContainer) this.productsContainer.style.display = mode === 'products' ? 'flex' : 'none';
@@ -921,6 +968,10 @@ export class QRStudioApp {
             dashboard: {
                 title: 'Home',
                 sub: 'Metrics, templates, and print activity'
+            },
+            analytics: {
+                title: 'Analytics',
+                sub: 'Operational metrics & print activity'
             },
             designer: {
                 title: 'Designer',

@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <title>QR Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -44,6 +47,13 @@
         mountElement: app,
         initialLayout: PREBUILT_TEMPLATES[0].layout
       });
+
+      // Register the service worker for PWA install + offline app shell
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").catch((e) => console.warn("SW registration failed", e));
+        });
+      }
     </script>
   </body>
 </html>
