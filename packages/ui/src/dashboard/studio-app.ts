@@ -462,8 +462,9 @@ export class QRStudioApp {
         this.overviewDashboardInstance = new OverviewDashboardView({
             container: this.dashboardContainer,
             userRole: this.userRole,
+            userName: this.currentUser?.fullName || this.currentUser?.email || '',
             allowedCategories: this.allowedCategories,
-            onNavigate: (mode) => this.switchMode(mode),
+            onNavigate: (mode) => this.switchMode(mode as StudioAppMode),
             onSelectTemplate: (tpl, action) => {
                 this.currentLayout = JSON.parse(JSON.stringify(tpl.layout));
                 this.entitySchemas[tpl.schemaKey] = tpl.schema;

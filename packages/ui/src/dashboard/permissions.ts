@@ -91,12 +91,12 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = (() => {
     designer['employees'].delete = true;
     rp['designer'] = designer;
 
-    // Operator / user: read-only on operational pages (incl. print), no designer/settings/users.
+    // Operator / user: focused on printing + serial/batch production.
+    // No designer, no catalog/people management, no system settings.
     const user = allFalse();
-    for (const key of ['dashboard', 'print', 'templates', 'products', 'serials', 'batches', 'employees'] as PageKey[]) {
+    for (const key of ['dashboard', 'print', 'templates', 'serials', 'batches'] as PageKey[]) {
         user[key].view = true;
     }
-    // Operators can create serials & batches (core production flow).
     user['serials'].create = true;
     user['batches'].create = true;
     rp['user'] = user;
