@@ -262,76 +262,47 @@ export class TemplateLibraryView {
 
         this.container.innerHTML = `
         <div class="template-library-container">
-            <!-- TOP ACCESS CONTROL SIMULATOR & STATUS BAR -->
-            <div class="template-rbac-banner">
-                <div class="rbac-status-info">
-                    <span class="rbac-role-pill">${this.activeRole.badge}</span>
-                    <div>
-                        <strong class="rbac-user-title">${this.activeRole.roleName}</strong>
-                        <p class="rbac-user-desc">${this.activeRole.description}</p>
-                    </div>
-                </div>
-
-                <div class="rbac-right-actions">
-                    <div class="rbac-role-selector-wrap">
-                        <label for="select-simulate-role" class="rbac-select-label">Access Simulator:</label>
-                        <select id="select-simulate-role" class="rbac-role-dropdown" title="Simulate Category Access for User Roles">
-                            ${PRESET_USER_ROLES.map(r => `
-                                <option value="${r.roleId}" ${this.activeRole.roleId === r.roleId ? 'selected' : ''}>
-                                    ${r.badge} — ${r.roleName}
-                                </option>
-                            `).join('')}
-                        </select>
-                    </div>
-
-                    ${canCurrentUser('templates', 'create') ? `
-                    <button class="btn btn-primary btn-create-template-primary" id="btn-open-create-template-modal">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-                        <span>Create Template</span>
-                    </button>
-                    ` : ''}
-                </div>
-            </div>
-
             <!-- LIBRARY HEADER -->
             <div class="library-header">
                 <div class="library-header-text">
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-                        <h2 class="library-main-title">📁 Template Library &amp; Access Master</h2>
-                    </div>
-                    <p class="library-sub-text">
-                        Category-governed sticker layouts for automated batch printing and visual customization.
-                        Authorized templates: <strong>${templateList.length}</strong> available.
-                    </p>
+                    <h2 class="library-main-title">📁 Template Library</h2>
+                    <p class="library-sub-text">${templateList.length} template(s) available.</p>
                 </div>
 
-                <div class="library-toolbar">
-                    <!-- SEARCH INPUT -->
-                    <div class="search-box">
-                        <svg class="search-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                        <input type="text" id="lib-search-input" placeholder="Search templates..." value="${this.searchQuery}" />
-                        ${this.searchQuery ? `<button class="btn-clear-search" id="btn-clear-template-search">✕</button>` : ''}
-                    </div>
+                ${canCurrentUser('templates', 'create') ? `
+                <button class="btn btn-primary btn-create-template-primary" id="btn-open-create-template-modal">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                    <span>Create Template</span>
+                </button>
+                ` : ''}
+            </div>
 
-                    <button class="btn btn-outline btn-sm" id="btn-open-manage-categories" title="Create, rename, or delete template categories">
-                        <span>⚙️ Manage Categories</span>
+            <!-- TOOLBAR -->
+            <div class="library-toolbar">
+                <div class="search-box" style="flex:1;max-width:340px;">
+                    <svg class="search-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input type="text" id="lib-search-input" placeholder="Search templates..." value="${esc(this.searchQuery)}" />
+                    ${this.searchQuery ? `<button class="btn-clear-search" id="btn-clear-template-search">✕</button>` : ''}
+                </div>
+                <span style="margin-left:auto;"></span>
+                <button class="btn btn-outline btn-sm" id="btn-open-manage-categories" title="Create, rename, or delete template categories">
+                    <span>⚙️ Categories</span>
+                </button>
+            </div>
+
+            <!-- CATEGORY NAVIGATION PILLS (single horizontal row) -->
+            <div class="category-pills-scroll">
+                ${visibleCategoryTabs.map(cat => {
+                    const count = categoryCounts[cat.id] || 0;
+                    const isActive = this.selectedCategory === cat.id;
+                    return `
+                    <button class="cat-pill ${isActive ? 'active' : ''}" data-cat="${esc(cat.id)}">
+                        <span class="cat-pill-icon">${esc(cat.icon)}</span>
+                        <span class="cat-pill-label">${esc(cat.label)}</span>
+                        <span class="cat-pill-count">${count}</span>
                     </button>
-                </div>
-
-                <!-- CATEGORY NAVIGATION PILLS -->
-                <div class="category-pills-scroll">
-                    ${visibleCategoryTabs.map(cat => {
-                        const count = categoryCounts[cat.id] || 0;
-                        const isActive = this.selectedCategory === cat.id;
-                        return `
-                        <button class="cat-pill ${isActive ? 'active' : ''}" data-cat="${esc(cat.id)}">
-                            <span class="cat-pill-icon">${esc(cat.icon)}</span>
-                            <span class="cat-pill-label">${esc(cat.label)}</span>
-                            <span class="cat-pill-count">${count}</span>
-                        </button>
-                        `;
-                    }).join('')}
-                </div>
+                    `;
+                }).join('')}
             </div>
 
             <!-- TEMPLATE LIST (LINE ITEMS) -->

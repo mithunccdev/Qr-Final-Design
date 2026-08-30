@@ -1987,13 +1987,21 @@
 
 .category-pills-scroll {
   display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 4px;
   margin-top: 14px;
+  width: 100%;
+  scrollbar-width: thin;
 }
+.category-pills-scroll::-webkit-scrollbar { height: 6px; }
+.category-pills-scroll::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 3px; }
+.category-pills-scroll::-webkit-scrollbar-track { background: transparent; }
 
 .category-pills-scroll .cat-pill {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
