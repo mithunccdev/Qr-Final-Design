@@ -465,13 +465,7 @@ export class QRStudioApp {
 
     private initGenerate() {
         if (this.generateContainer) {
-            new GenerateView({
-                container: this.generateContainer,
-                onNavigateToPrint: (records) => {
-                    if (this.printDashboardInstance) this.printDashboardInstance.setBatchData(records);
-                    this.switchMode('print');
-                }
-            });
+            new GenerateView({ container: this.generateContainer });
         }
     }
 
