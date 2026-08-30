@@ -279,10 +279,14 @@ export class TemplateLibraryView {
 
             <!-- TOOLBAR -->
             <div class="library-toolbar">
-                <div class="search-box" style="flex:1;max-width:340px;">
-                    <svg class="search-icon-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                    <input type="text" id="lib-search-input" placeholder="Search templates..." value="${esc(this.searchQuery)}" />
-                    ${this.searchQuery ? `<button class="btn-clear-search" id="btn-clear-template-search">✕</button>` : ''}
+                <div style="display:flex;align-items:center;gap:10px;flex:1;max-width:360px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
+                    <select id="lib-category-select" title="Filter by template category" style="width:100%;padding:8px 12px;border:1px solid var(--border-color,#cbd5e1);border-radius:9px;font-size:0.8125rem;background:#fff;">
+                        <option value="All" ${this.selectedCategory === 'All' ? 'selected' : ''}>All Templates</option>
+                        ${visibleCategoryTabs.filter(c => c.id !== 'All').map(cat => `
+                            <option value="${esc(cat.id)}" ${this.selectedCategory === cat.id ? 'selected' : ''}>${esc(cat.icon)} ${esc(cat.label)} (${categoryCounts[cat.id] || 0})</option>
+                        `).join('')}
+                    </select>
                 </div>
                 <span style="margin-left:auto;"></span>
                 <button class="btn btn-outline btn-sm" id="btn-open-manage-categories" title="Create, rename, or delete template categories">
@@ -465,14 +469,9 @@ export class TemplateLibraryView {
             });
         });
 
-        // Search Input
-        this.container.querySelector<HTMLInputElement>('#lib-search-input')?.addEventListener('input', (e) => {
-            this.searchQuery = (e.target as HTMLInputElement).value;
-            this.render();
-        });
-
-        this.container.querySelector('#btn-clear-template-search')?.addEventListener('click', () => {
-            this.searchQuery = '';
+        // Category Dropdown (replaces search)
+        this.container.querySelector<HTMLSelectElement>('#lib-category-select')?.addEventListener('change', (e) => {
+            this.selectedCategory = (e.target as HTMLSelectElement).value as any || 'All';
             this.render();
         });
 
