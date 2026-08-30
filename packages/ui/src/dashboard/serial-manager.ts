@@ -28,8 +28,9 @@ export class SerialManagerView {
     private batches: BatchRecord[] = [];
     private selectedSerialIds: Set<string> = new Set();
     private searchQuery: string = '';
-    private statusFilter: string = 'All';
-    private plantFilter: string = 'All';
+private statusFilter: string = 'All';
+private printStatusFilter: string = 'All';
+private plantFilter: string = 'All';
     private batchFilter: string = 'All';
     private productFilter: string = 'All';
 
@@ -186,11 +187,13 @@ export class SerialManagerView {
                 (s.plant && s.plant.toLowerCase().includes(q));
 
             const matchesStatus = this.statusFilter === 'All' || s.status === this.statusFilter;
+            const matchesPrint = this.printStatusFilter === 'All'
+                || (this.printStatusFilter === 'Printed' ? (s.printCount || 0) > 0 : (s.printCount || 0) <= 0);
             const matchesPlant = this.plantFilter === 'All' || s.plant === this.plantFilter;
             const matchesBatch = this.batchFilter === 'All' || (s as any).batchNumber === this.batchFilter;
             const matchesProduct = this.productFilter === 'All' || s.productId === this.productFilter || s.sku === this.productFilter;
 
-            return matchesQuery && matchesStatus && matchesPlant && matchesBatch && matchesProduct;
+            return matchesQuery && matchesStatus && matchesPrint && matchesPlant && matchesBatch && matchesProduct;
         });
 
         // Unique batches & plants for filters
@@ -269,20 +272,26 @@ export class SerialManagerView {
                             <option value="Returned" ${this.statusFilter === 'Returned' ? 'selected' : ''}>Returned</option>
                         </select>
 
+                        <select id="filter-serial-print" class="filter-dropdown">
+                            <option value="All" ${this.printStatusFilter === 'All' ? 'selected' : ''}>All Prints</option>
+                            <option value="Non-Printed" ${this.printStatusFilter === 'Non-Printed' ? 'selected' : ''}>Non-Printed</option>
+                            <option value="Printed" ${this.printStatusFilter === 'Printed' ? 'selected' : ''}>Printed</option>
+                        </select>
+
                         <select id="filter-serial-plant" class="filter-dropdown">
                             <option value="All" ${this.plantFilter === 'All' ? 'selected' : ''}>All Plants</option>
                             ${uniquePlants.map(p => `<option value="${p}" ${this.plantFilter === p ? 'selected' : ''}>${p}</option>`).join('')}
                         </select>
 
-                        <select id="filter-serial-batch" class="filter-dropdown">
-                            <option value="All" ${this.batchFilter === 'All' ? 'selected' : ''}>All Batches</option>
-                            ${uniqueBatches.map(b => `<option value="${esc(b)}" ${this.batchFilter === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
-                        </select>
+                        <input type="text" id="filter-serial-batch" list="serial-batches" class="filter-dropdown" placeholder="🔍 Type / select batch…" value="${this.batchFilter === 'All' ? '' : this.batchFilter}" autocomplete="off" style="min-width:180px;" />
+                        <datalist id="serial-batches">
+                            ${uniqueBatches.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('')}
+                        </datalist>
 
-                        <select id="filter-serial-product" class="filter-dropdown">
-                            <option value="All" ${this.productFilter === 'All' ? 'selected' : ''}>All Products</option>
-                            ${this.products.map(pr => `<option value="${esc(pr.id)}" ${this.productFilter === pr.id ? 'selected' : ''}>${esc(pr.sku)} - ${esc(pr.title)}</option>`).join('')}
-                        </select>
+                        <input type="text" id="filter-serial-product" list="serial-products" class="filter-dropdown" placeholder="🔍 Type / select product…" value="${this.productFilter === 'All' ? '' : this.productFilter}" autocomplete="off" style="min-width:200px;" />
+                        <datalist id="serial-products">
+                            ${this.products.map(pr => `<option value="${esc(pr.sku)}">${esc(pr.title)}</option>`).join('')}
+                        </datalist>
                     </div>
                 </div>
 
@@ -350,7 +359,7 @@ export class SerialManagerView {
                                     </td>
                                     <td>
                                         <span class="nav-item-badge ${s.printCount > 0 ? 'badge-emerald' : 'badge-neutral'}">
-                                            🖨️ ${s.printCount || 0}
+                                            ${s.printCount > 0 ? '🖨️ Printed' : '⏸️ Non-Printed'} ${s.printCount || 0}
                                         </span>
                                     </td>
                                     <td style="text-align: right;">
@@ -437,16 +446,20 @@ export class SerialManagerView {
             this.statusFilter = (e.target as HTMLSelectElement).value;
             this.render();
         });
+        this.container.querySelector('#filter-serial-print')?.addEventListener('change', (e) => {
+            this.printStatusFilter = (e.target as HTMLSelectElement).value;
+            this.render();
+        });
         this.container.querySelector('#filter-serial-plant')?.addEventListener('change', (e) => {
             this.plantFilter = (e.target as HTMLSelectElement).value;
             this.render();
         });
         this.container.querySelector('#filter-serial-batch')?.addEventListener('change', (e) => {
-            this.batchFilter = (e.target as HTMLSelectElement).value;
+            this.batchFilter = ((e.target as HTMLInputElement).value || '').trim() || 'All';
             this.render();
         });
         this.container.querySelector('#filter-serial-product')?.addEventListener('change', (e) => {
-            this.productFilter = (e.target as HTMLSelectElement).value;
+            this.productFilter = ((e.target as HTMLInputElement).value || '').trim() || 'All';
             this.render();
         });
 

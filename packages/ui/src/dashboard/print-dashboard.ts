@@ -233,10 +233,46 @@ export class QRPrintDashboard {
         });
         void supabaseService.logAudit({ action: 'print', entityType: 'print_job', entityId: printer?.id || '', entityLabel: `${expanded.length} label(s)` });
 
+        // Mark the printed serials as printed (increment print_count, set last_printed_at).
+        this.markSerialsPrinted(expanded);
+
         // Use the expanded set so every label (incl. per-row qty) prints; then open the OS print dialog.
         this.dataset = expanded;
         this.selectedIndices = new Set(expanded.map((_, i) => i));
         void this.triggerBrowserPrint();
+    }
+
+    /** Increment print_count (and set last_printed_at / printed flag) for each serial that was printed. */
+    private markSerialsPrinted(expanded: Record<string, any>[]): void {
+        const counts: Record<string, number> = {};
+        for (const r of expanded) {
+            const sn = (r.serialNumber || '').trim();
+            if (!sn) continue;
+            counts[sn] = (counts[sn] || 0) + 1;
+        }
+        const serialNumbers = Object.keys(counts);
+        if (serialNumbers.length === 0) return;
+
+        const local = this.loadLocalSerials();
+        const updatable = new Set(serialNumbers.map(s => s.toUpperCase()));
+        let changed = false;
+        const affected: any[] = [];
+        for (const s of local) {
+            if (updatable.has(String(s.serialNumber || '').toUpperCase())) {
+                const add = counts[s.serialNumber.trim()];
+                s.print_count = (s.printCount || s.print_count || 0) + add;
+                s.printCount = s.print_count;
+                s.last_printed_at = new Date().toISOString();
+                s.status = 'Printed';
+                changed = true;
+                affected.push(s);
+            }
+        }
+        if (changed) {
+            this.saveLocalSerials(local);
+            // Persist the affected units to the DB (individual upserts).
+            affected.forEach(u => void supabaseService.saveSerial(u));
+        }
     }
 
     private loadLocalSerials(): any[] {
@@ -1300,6 +1336,11 @@ export class QRPrintDashboard {
         const totalCount = this.dataset.length;
         const selectedTotal = this.dataset.reduce((sum, r, i) => this.selectedIndices.has(i) ? sum + (r._qty || 1) : sum, 0);
         const batches = this.listBatches();
+        // Records shown below (respecting the Printed / Non-Printed filter; keeps original indices).
+        const rows = this.dataset
+            .map((r, i) => ({ r, i }))
+            .filter(({ r }) => this.printFilter === 'All'
+                || (this.printFilter === 'Printed' ? (r._printCount || 0) > 0 : (r._printCount || 0) <= 0));
 
         this.container.innerHTML = `
         <div class="entity-manager-root" style="padding:16px 24px;">
@@ -1352,6 +1393,14 @@ export class QRPrintDashboard {
                         </select>
                     </div>
                     <button class="btn btn-outline" id="bp-save-default" title="Save these as your default print settings">💾 Save</button>
+                    <div style="flex:0 1 130px;">
+                        <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">Print Status</label>
+                        <select id="bp-print-filter" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;">
+                            <option value="All" ${this.printFilter === 'All' ? 'selected' : ''}>All</option>
+                            <option value="Non-Printed" ${this.printFilter === 'Non-Printed' ? 'selected' : ''}>Non-Printed</option>
+                            <option value="Printed" ${this.printFilter === 'Printed' ? 'selected' : ''}>Printed</option>
+                        </select>
+                    </div>
                     <span style="font-size:0.75rem;color:var(--text-secondary);white-space:nowrap;margin-left:auto;">${activeCount} of ${totalCount} selected · ${selectedTotal} labels</span>
                 </div>
 
@@ -1362,9 +1411,9 @@ export class QRPrintDashboard {
                             <tr><th style="width:52px;text-align:center;">PRINT</th><th>SERIAL NUMBER</th><th>PRODUCT SKU</th><th style="width:80px;text-align:center;">QTY</th></tr>
                         </thead>
                         <tbody>
-                            ${totalCount === 0 ? `
+                            ${rows.length === 0 ? `
                                 <tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-secondary);">No records. Pick a batch above and click Load, or generate from the Generate page.</td></tr>
-                            ` : this.dataset.map((r, i) => `
+                            ` : rows.map(({ r, i }) => `
                                 <tr>
                                     <td style="text-align:center;"><input type="checkbox" class="bp-row-chk" data-i="${i}" ${this.selectedIndices.has(i) ? 'checked' : ''} /></td>
                                     <td style="font-family:monospace;font-weight:600;">${this.escapeHtml(r.serialNumber || '')}</td>
@@ -1386,6 +1435,7 @@ export class QRPrintDashboard {
 
     private activeBatchNumber: string = '__all__';
     private quickQty: number = 0;
+    private printFilter: 'All' | 'Printed' | 'Non-Printed' = 'All';
 
     private currentTemplateId(): string {
         return this.availableTemplates.find(t => t.layout && JSON.stringify(t.layout) === JSON.stringify(this.currentLayout))?.id
@@ -1405,7 +1455,8 @@ export class QRPrintDashboard {
         if (batchNumber !== '__all__') rows = allSerials.filter((s: any) => s.batchNumber === batchNumber);
         this.dataset = rows.map((s: any) => ({
             serialNumber: s.serialNumber, sku: s.sku, productTitle: s.productTitle,
-            category: s.category, plant: s.plant, color: s.color, warranty: s.warranty, _qty: this.quickQty || 1, ...(s.variables || {})
+            category: s.category, plant: s.plant, color: s.color, warranty: s.warranty,
+            _qty: this.quickQty || 1, _printCount: s.printCount || s.print_count || 0, ...(s.variables || {})
         }));
         // Default quantity = saved default, else number of records in this batch.
         if (!this.quickQty) {
@@ -1444,6 +1495,10 @@ export class QRPrintDashboard {
         });
         q('#bp-batch')?.addEventListener('change', (e: any) => {
             if (e.target.value !== '__all__') this.loadRecordsForBatch(e.target.value);
+        });
+        q('#bp-print-filter')?.addEventListener('change', (e: any) => {
+            this.printFilter = e.target.value;
+            this.render();
         });
         q('#bp-print')?.addEventListener('click', () => this.quickPrint());
         q('#bp-export-pdf')?.addEventListener('click', () => this.exportBatchPDF());
