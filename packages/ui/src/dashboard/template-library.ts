@@ -294,21 +294,6 @@ export class TemplateLibraryView {
                 </button>
             </div>
 
-            <!-- CATEGORY NAVIGATION PILLS (single horizontal row) -->
-            <div class="category-pills-scroll">
-                ${visibleCategoryTabs.map(cat => {
-                    const count = categoryCounts[cat.id] || 0;
-                    const isActive = this.selectedCategory === cat.id;
-                    return `
-                    <button class="cat-pill ${isActive ? 'active' : ''}" data-cat="${esc(cat.id)}">
-                        <span class="cat-pill-icon">${esc(cat.icon)}</span>
-                        <span class="cat-pill-label">${esc(cat.label)}</span>
-                        <span class="cat-pill-count">${count}</span>
-                    </button>
-                    `;
-                }).join('')}
-            </div>
-
             <!-- TEMPLATE LIST (LINE ITEMS) -->
             <div class="template-list-table-wrap">
                 ${templateList.length === 0 ? this.renderNoAccessState() : `
@@ -461,7 +446,7 @@ export class TemplateLibraryView {
             this.setUserRole(roleId);
         });
 
-        // Category Pills
+        // Category Pills (kept as a compatibility no-op; selection is now via dropdown)
         this.container.querySelectorAll<HTMLButtonElement>('.cat-pill').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 this.selectedCategory = (e.currentTarget as HTMLButtonElement).dataset.cat as any || 'All';
