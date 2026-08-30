@@ -233,8 +233,10 @@ export class QRPrintDashboard {
         });
         void supabaseService.logAudit({ action: 'print', entityType: 'print_job', entityId: printer?.id || '', entityLabel: `${expanded.length} label(s)` });
 
-        alert(`🖨️ Print job started on "${printer?.name || 'default printer'}" — ${expanded.length} label(s).`);
-        if (zpl) this.showZPLModal();
+        // Use the expanded set so every label (incl. per-row qty) prints; then open the OS print dialog.
+        this.dataset = expanded;
+        this.selectedIndices = new Set(expanded.map((_, i) => i));
+        void this.triggerBrowserPrint();
     }
 
     private loadLocalSerials(): any[] {
@@ -1373,6 +1375,9 @@ export class QRPrintDashboard {
                     </table>
                 </div>
             </div>
+
+            <!-- HIDDEN PRINT CONTAINER (filled by triggerBrowserPrint; only shown on the OS print dialog) -->
+            <div id="print-media-container" class="print-only"></div>
         </div>`;
 
         this.bindSimplified();
