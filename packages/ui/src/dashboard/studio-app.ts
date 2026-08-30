@@ -18,6 +18,7 @@ import type { PageKey } from './permissions';
 import { AccessControlView } from './access-control';
 import { AuditLogView, PrintersView, PrintJobsView } from './settings-tools';
 import { AnalyticsView } from './analytics';
+import { GenerateView } from './generate-view';
 import { BrandingManagerView } from './branding-manager';
 import { LANGS, getLang, setLang, applyTranslations } from './i18n';
 import { loadCompanyProfile, logoBadgeHtml, CompanyProfile } from './branding';
@@ -31,7 +32,7 @@ export interface StudioAppOptions {
     initialMode?: StudioAppMode;
 }
 
-export type StudioAppMode = 'dashboard' | 'analytics' | 'designer' | 'print' | 'library' | 'products' | 'serials' | 'batches' | 'employees' | 'settings' | 'users';
+export type StudioAppMode = 'dashboard' | 'analytics' | 'designer' | 'generate' | 'print' | 'library' | 'products' | 'serials' | 'batches' | 'employees' | 'settings' | 'users';
 
 export class QRStudioApp {
     private mountElement: HTMLElement;
@@ -53,6 +54,7 @@ export class QRStudioApp {
 
     private dashboardContainer!: HTMLDivElement;
     private analyticsContainer!: HTMLDivElement;
+    private generateContainer!: HTMLDivElement;
     private designerContainer!: HTMLDivElement;
     private printContainer!: HTMLDivElement;
     private libraryContainer!: HTMLDivElement;
@@ -111,7 +113,7 @@ export class QRStudioApp {
     }
 
     private static readonly PAGE_BY_MODE: Record<string, PageKey> = {
-        dashboard: 'dashboard', analytics: 'dashboard', designer: 'designer', print: 'print', library: 'templates',
+        dashboard: 'dashboard', analytics: 'dashboard', generate: 'serials', designer: 'designer', print: 'print', library: 'templates',
         products: 'products', serials: 'serials', batches: 'batches', employees: 'employees',
         users: 'users', settings: 'settings'
     };
@@ -217,6 +219,15 @@ export class QRStudioApp {
                                 </span>
                                 <span class="nav-item-label" data-i18n="nav.designer">Designer</span>
                             </button>
+                        ` : ''}
+
+                        ${this.canAccess('serials') || this.canAccess('batches') ? `
+                        <button class="sidebar-nav-item ${this.activeMode === 'generate' ? 'active' : ''}" data-mode="generate" title="Generate Serial & Batch Numbers">
+                            <span class="nav-item-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                            </span>
+                            <span class="nav-item-label">Generate</span>
+                        </button>
                         ` : ''}
 
                         <button class="sidebar-nav-item ${this.activeMode === 'print' ? 'active' : ''}" data-mode="print" title="Batch Print Hub">
@@ -356,6 +367,7 @@ export class QRStudioApp {
                 <div class="studio-viewport-container">
                     <div class="studio-pane" id="pane-dashboard" style="display: ${this.activeMode === 'dashboard' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-analytics" style="display: ${this.activeMode === 'analytics' ? 'flex' : 'none'};"></div>
+                    <div class="studio-pane" id="pane-generate" style="display: ${this.activeMode === 'generate' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-designer" style="display: ${this.activeMode === 'designer' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-print" style="display: ${this.activeMode === 'print' ? 'flex' : 'none'};"></div>
                     <div class="studio-pane" id="pane-products" style="display: ${this.activeMode === 'products' ? 'flex' : 'none'};"></div>
@@ -372,6 +384,7 @@ export class QRStudioApp {
 
         this.dashboardContainer = this.mountElement.querySelector('#pane-dashboard') as HTMLDivElement;
         this.analyticsContainer = this.mountElement.querySelector('#pane-analytics') as HTMLDivElement;
+        this.generateContainer = this.mountElement.querySelector('#pane-generate') as HTMLDivElement;
         this.designerContainer = this.mountElement.querySelector('#pane-designer') as HTMLDivElement;
         this.printContainer = this.mountElement.querySelector('#pane-print') as HTMLDivElement;
         this.productsContainer = this.mountElement.querySelector('#pane-products') as HTMLDivElement;
@@ -384,6 +397,7 @@ export class QRStudioApp {
 
         this.initDashboard();
         this.initAnalytics();
+        this.initGenerate();
         if (this.canAccess('designer')) this.initDesigner();
         this.initLibrary();
         this.initPrintDashboard();
@@ -456,6 +470,18 @@ export class QRStudioApp {
 
     private initAnalytics() {
         if (this.analyticsContainer) new AnalyticsView({ container: this.analyticsContainer });
+    }
+
+    private initGenerate() {
+        if (this.generateContainer) {
+            new GenerateView({
+                container: this.generateContainer,
+                onNavigateToPrint: (records) => {
+                    if (this.printDashboardInstance) this.printDashboardInstance.setBatchData(records);
+                    this.switchMode('print');
+                }
+            });
+        }
     }
 
     private initDashboard() {
@@ -932,6 +958,8 @@ export class QRStudioApp {
             mode = 'dashboard';
         } else if (mode === 'designer' && !this.canAccess('designer')) {
             mode = 'print';
+        } else if (mode === 'generate' && !(this.canAccess('serials') || this.canAccess('batches'))) {
+            mode = 'dashboard';
         }
 
         this.activeMode = mode;
@@ -942,6 +970,7 @@ export class QRStudioApp {
 
         if (this.dashboardContainer) this.dashboardContainer.style.display = mode === 'dashboard' ? 'flex' : 'none';
         if (this.analyticsContainer) this.analyticsContainer.style.display = mode === 'analytics' ? 'flex' : 'none';
+        if (this.generateContainer) this.generateContainer.style.display = mode === 'generate' ? 'flex' : 'none';
         if (this.designerContainer) this.designerContainer.style.display = mode === 'designer' ? 'flex' : 'none';
         if (this.printContainer) this.printContainer.style.display = mode === 'print' ? 'flex' : 'none';
         if (this.productsContainer) this.productsContainer.style.display = mode === 'products' ? 'flex' : 'none';
@@ -973,6 +1002,10 @@ export class QRStudioApp {
             analytics: {
                 title: 'Analytics',
                 sub: 'Operational metrics & print activity'
+            },
+            generate: {
+                title: 'Generate',
+                sub: 'Create serial & batch numbers'
             },
             designer: {
                 title: 'Designer',

@@ -78,6 +78,9 @@ export class QRPrintDashboard {
     private comboOpen = false;
     private serialQty = 1;
 
+    private printers: any[] = [];
+    private selectedPrinterId: string = '';
+
     private renderer: BatchSheetRenderer;
     private sheetCanvas!: HTMLCanvasElement;
     private previewContainer!: HTMLElement;
@@ -100,6 +103,14 @@ export class QRPrintDashboard {
 
         // Load products filtered by user's plants, then render
         this.loadProducts().then(() => this.render());
+        // Load printers (device presets) + saved default selections
+        void supabaseService.fetchPrinters().then(list => {
+            if (list && list.length > 0) {
+                this.printers = list;
+                this.selectedPrinterId = this.loadDefault('quick.print.printer') || list.find(p => p.is_default)?.id || list[0].id;
+                this.render();
+            }
+        });
     }
 
     /** Load products from Supabase, filtered by the current user's allowedPlants */
@@ -114,6 +125,14 @@ export class QRPrintDashboard {
         this.products = allowAll
             ? all
             : all.filter(p => userPlants.includes(p.plant || ''));
+    }
+
+    /** Persisted "quick print" defaults so the user can just press Print next time. */
+    private loadDefault(key: string): string {
+        try { return localStorage.getItem(key) || ''; } catch { return ''; }
+    }
+    private saveDefault(key: string, value: string): void {
+        try { localStorage.setItem(key, value); } catch {}
     }
 
     /**
@@ -178,6 +197,36 @@ export class QRPrintDashboard {
         this.currentSheetIndex = 0;
         this.render();
         alert(`✅ Generated ${units.length} serial(s) for ${product.sku} in batch ${batchNumber}.`);
+    }
+
+    /** "Quick Print": records a print job for the current dataset (uses saved defaults). */
+    private quickPrint(): void {
+        const qtyEl = this.container.querySelector<HTMLInputElement>('#quick-qty');
+        const printerEl = this.container.querySelector<HTMLSelectElement>('#quick-printer');
+        const qty = Math.max(1, parseInt(qtyEl?.value || '1', 10) || 1);
+        const printer = this.printers.find(p => p.id === (printerEl?.value || this.selectedPrinterId));
+        const dpi = printer?.dpi || 203;
+
+        let rows = this.dataset;
+        if (rows.length === 0) {
+            // No data loaded — build a simple placeholder dataset of `qty` rows.
+            rows = Array.from({ length: qty }, (_, i) => ({ serialNumber: `SN-${String(i + 1).padStart(4, '0')}`, title: this.currentLayout?.name || 'Label' }));
+        }
+
+        const selected = new Set(rows.map((_, i) => i));
+        let zpl = '';
+        try {
+            zpl = this.renderer.generateBatchZPL(this.currentLayout, rows, selected, dpi as any);
+        } catch { /* non-fatal */ }
+
+        void supabaseService.logPrintJob({
+            entityType: 'label', entityLabel: `${rows.length} label(s) · ${this.currentLayout?.name || ''}`,
+            format: 'ZPL', dpi, quantity: rows.length, printerName: printer?.name || ''
+        });
+        void supabaseService.logAudit({ action: 'print', entityType: 'print_job', entityId: printer?.id || '', entityLabel: `${rows.length} label(s)` });
+
+        alert(`🖨️ Print job started on "${printer?.name || 'default printer'}" — ${rows.length} label(s).`);
+        if (zpl) this.showZPLModal();
     }
 
     private loadLocalSerials(): any[] {
@@ -442,6 +491,25 @@ export class QRPrintDashboard {
                         Print Now
                     </button>
                 </div>
+            </div>
+
+            <!-- QUICK PRINT SETUP -->
+            <div class="quick-print-bar" style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border-color,#e2e8f0);background:#fbfcfe;">
+                <div style="font-size:0.8125rem;font-weight:700;color:var(--text-primary);align-self:center;">⚡ Quick Print</div>
+                <div style="flex:1;min-width:150px;">
+                    <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">Quantity</label>
+                    <input type="number" id="quick-qty" min="1" value="${this.loadDefault('quick.print.qty') || Math.max(1, this.dataset.length || 1)}" style="width:100%;padding:7px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;" />
+                </div>
+                <div style="flex:1;min-width:180px;">
+                    <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">Printer</label>
+                    <select id="quick-printer" style="width:100%;padding:7px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;">
+                        ${this.printers.length === 0 ? '<option value="">No printers configured — add in Settings</option>' : this.printers.map(p => `
+                            <option value="${this.escapeHtml(p.id)}" ${p.id === this.selectedPrinterId ? 'selected' : ''}>${this.escapeHtml(p.name)} · ${this.escapeHtml(String(p.dpi))} DPI · ${this.escapeHtml(String(p.label_width_mm))}×${this.escapeHtml(String(p.label_height_mm))}mm${p.is_default ? ' (default)' : ''}</option>
+                        `).join('')}
+                    </select>
+                </div>
+                <button class="btn btn-outline" id="btn-save-print-default" title="Save these as your default print settings">💾 Save as Default</button>
+                <button class="btn btn-primary" id="btn-quick-print" title="Start the print job">🖨️ Print</button>
             </div>
 
             <!-- WORKSPACE BODY -->
@@ -1009,6 +1077,16 @@ export class QRPrintDashboard {
         q('#btn-export-pdf')?.addEventListener('click', () => this.exportBatchPDF());
         q('#btn-export-png')?.addEventListener('click', () => this.exportSheetPNG());
         q('#btn-export-zpl')?.addEventListener('click', () => this.showZPLModal());
+
+        // Quick Print bar
+        q('#btn-quick-print')?.addEventListener('click', () => this.quickPrint());
+        q('#btn-save-print-default')?.addEventListener('click', () => {
+            const qty = q('#quick-qty') as HTMLInputElement;
+            const printer = q('#quick-printer') as HTMLSelectElement;
+            this.saveDefault('quick.print.qty', qty?.value || '1');
+            this.saveDefault('quick.print.printer', printer?.value || '');
+            alert('✅ Default print settings saved. Next time just press Print.');
+        });
 
         // Generate Preview (on-demand)
         q('#btn-generate-preview')?.addEventListener('click', () => {
