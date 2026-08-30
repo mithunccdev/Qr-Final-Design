@@ -158,6 +158,7 @@ export class TemplateLibraryView {
             if (title?.trim()) custom.title = title.trim();
             this.saveCustomTemplates();
             void supabaseService.saveTemplate({ ...custom });
+            void this.snapshotTemplate({ ...custom });
             return;
         }
         if (PREBUILT_TEMPLATES.some(t => t.id === id)) {
@@ -167,6 +168,8 @@ export class TemplateLibraryView {
                 title: title?.trim() ? title.trim() : undefined
             };
             saveTemplateOverrides(overrides);
+            const tpl = PREBUILT_TEMPLATES.find(t => t.id === id);
+            if (tpl) void this.snapshotTemplate({ ...tpl, layout: JSON.parse(JSON.stringify(layout)) });
         }
     }
 
@@ -381,6 +384,7 @@ export class TemplateLibraryView {
             <td>
                 <div class="line-item-actions">
                     <button class="btn btn-outline btn-xs btn-view-template" data-id="${t.id}" title="View template details">👁 View</button>
+                    <button class="btn btn-outline btn-xs btn-history-template" data-id="${t.id}" title="Version history & restore">🗂️ History</button>
                     ${canDesign ? `<button class="btn btn-outline btn-xs btn-edit-template" data-id="${t.id}" title="Edit in Designer">✏️ Edit</button>` : ''}
                     ${isCustom ? `<button class="btn btn-danger-soft btn-xs btn-delete-tpl" data-id="${t.id}" title="Delete custom template">🗑️</button>` : ''}
                 </div>
@@ -510,6 +514,72 @@ export class TemplateLibraryView {
         this.bindListActions();
     }
 
+    /** Snapshot the current layout as a version (call after any template save). */
+    private async snapshotTemplate(tpl: PrebuiltTemplate): Promise<void> {
+        try {
+            const versions = (await supabaseService.fetchTemplateVersions(tpl.id)) || [];
+            const nextVersion = (versions.length > 0 ? (Math.max(...versions.map(v => v.version || 1)) + 1) : 1);
+            await supabaseService.saveTemplateVersion({
+                templateId: tpl.id, title: tpl.title, layout: tpl.layout, sampleBatch: tpl.sampleBatch, version: nextVersion
+            });
+        } catch (e) { /* non-fatal */ }
+    }
+
+    private async openHistoryModal(templateId: string): Promise<void> {
+        const modalWrap = this.container.querySelector('#tpl-modal-root') || this.container.querySelector('#modal-container');
+        let host: HTMLElement | null = null;
+        if (modalWrap) host = modalWrap as HTMLElement;
+        if (!host) {
+            host = document.createElement('div');
+            this.container.appendChild(host);
+        }
+        const template = this.getAllTemplates().find(t => t.id === templateId);
+        host.innerHTML = `
+        <div class="dashboard-modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;">
+            <div class="dashboard-modal-box" style="background:var(--surface);border-radius:14px;width:560px;max-width:95vw;max-height:85vh;overflow:auto;padding:20px;">
+                <div class="panel-header-row" style="padding:0 0 12px 0;">
+                    <h2 class="panel-heading">🗂️ Version History — ${esc(template?.title || templateId)}</h2>
+                    <button class="btn btn-outline btn-xs" id="btn-close-history">✕</button>
+                </div>
+                <div id="history-list"><p style="text-align:center;color:var(--text-secondary);padding:20px;">Loading…</p></div>
+            </div>
+        </div>`;
+        host.querySelector('#btn-close-history')?.addEventListener('click', () => { host!.innerHTML = ''; });
+        const listEl = host.querySelector('#history-list') as HTMLElement;
+        const versions = (await supabaseService.fetchTemplateVersions(templateId)) || [];
+        if (versions.length === 0) {
+            listEl.innerHTML = '<div class="master-empty-state"><div class="empty-icon">🗂️</div><div class="empty-title">No versions yet</div></div>';
+            return;
+        }
+        listEl.innerHTML = `
+        <table class="manager-data-table">
+            <thead><tr><th>Version</th><th>Title</th><th>Saved By</th><th>Time</th><th>Actions</th></tr></thead>
+            <tbody>
+                ${versions.map(v => `
+                    <tr>
+                        <td><span class="sku-badge">v${esc(String(v.version))}</span></td>
+                        <td>${esc(v.title || '—')}</td>
+                        <td>${esc(v.saved_by || '—')}</td>
+                        <td style="font-size:0.75rem;color:var(--text-secondary);">${esc(new Date(v.created_at).toLocaleString())}</td>
+                        <td><button class="btn btn-sm btn-outline btn-restore-ver" data-ver="${esc(String(v.id))}" title="Restore this version">♻️ Restore</button></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>`;
+        listEl.querySelectorAll<HTMLButtonElement>('.btn-restore-ver').forEach(b => b.addEventListener('click', async () => {
+            const ver = versions.find(x => x.id === b.dataset.ver);
+            if (!ver || !template || !confirm('Restore this version? The current layout will be overwritten.')) return;
+            // Snapshot current before overwriting, then apply the selected version
+            await this.snapshotTemplate(template);
+            template.layout = ver.layout || template.layout;
+            template.sampleBatch = ver.sample_batch || template.sampleBatch;
+            this.updateTemplate(template.id, template.layout as any, template.title);
+            alert('✅ Template restored to this version.');
+            host!.innerHTML = '';
+            this.render();
+        }));
+    }
+
     private bindListActions() {
         // View a template (separate detail page)
         this.container.querySelectorAll<HTMLButtonElement>('.btn-view-template').forEach(btn => {
@@ -517,6 +587,14 @@ export class TemplateLibraryView {
                 const id = (e.currentTarget as HTMLButtonElement).dataset.id;
                 const template = this.getAllTemplates().find(t => t.id === id);
                 if (template) this.openViewPage(template);
+            });
+        });
+
+        // Version history / restore
+        this.container.querySelectorAll<HTMLButtonElement>('.btn-history-template').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = (e.currentTarget as HTMLButtonElement).dataset.id;
+                if (id) this.openHistoryModal(id);
             });
         });
 

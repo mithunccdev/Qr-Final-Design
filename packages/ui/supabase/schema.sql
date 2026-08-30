@@ -691,3 +691,123 @@ create policy "role_permissions_update" on public.role_permissions
 drop policy if exists "role_permissions_delete" on public.role_permissions;
 create policy "role_permissions_delete" on public.role_permissions
   for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 11. AUDIT LOG (who did what, when)
+--     Append-only. Any authenticated user records their own actions; admins may
+--     read/delete (maintenance). Designed for the audit-trail viewer.
+-- ════════════════════════════════════════════════════════════════════════════
+create table if not exists public.audit_logs (
+    id          text primary key,
+    actor_email text,
+    actor_role  text,
+    action      text not null,          -- 'create'|'update'|'delete'|'print'|'restore'|'login'
+    entity_type text not null,          -- 'product'|'employee'|'serial'|'batch'|'template'|'master_data'|'user'|'print_job'
+    entity_id   text,
+    entity_label text,
+    changes     jsonb default '{}',
+    created_at  timestamptz not null default now()
+);
+
+create index if not exists audit_logs_created_idx on public.audit_logs (created_at desc);
+create index if not exists audit_logs_entity_idx on public.audit_logs (entity_type);
+
+alter table public.audit_logs enable row level security;
+
+drop policy if exists "audit_logs_select" on public.audit_logs;
+create policy "audit_logs_select" on public.audit_logs
+  for select using (auth.role() = 'authenticated');
+
+drop policy if exists "audit_logs_insert" on public.audit_logs;
+create policy "audit_logs_insert" on public.audit_logs
+  for insert with check (auth.role() = 'authenticated');
+
+drop policy if exists "audit_logs_delete" on public.audit_logs;
+create policy "audit_logs_delete" on public.audit_logs
+  for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 12. PRINTERS (label device presets)
+-- ════════════════════════════════════════════════════════════════════════════
+create table if not exists public.printers (
+    id              text primary key,
+    name            text not null,
+    brand           text default 'Zebra',
+    model           text default '',
+    dpi             integer default 203,
+    label_width_mm  numeric default 100,
+    label_height_mm numeric default 50,
+    is_default      boolean default false,
+    created_by      text,
+    updated_by      text,
+    created_at      timestamptz not null default now(),
+    updated_at      timestamptz not null default now()
+);
+
+drop trigger if exists trg_printers_updated_at on public.printers;
+create trigger trg_printers_updated_at before update on public.printers
+  for each row execute function public.set_updated_at();
+
+alter table public.printers enable row level security;
+
+drop policy if exists "printers_select" on public.printers;
+create policy "printers_select" on public.printers for select using (auth.role() = 'authenticated');
+drop policy if exists "printers_insert" on public.printers;
+create policy "printers_insert" on public.printers for insert with check (public.is_admin());
+drop policy if exists "printers_update" on public.printers;
+create policy "printers_update" on public.printers for update using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "printers_delete" on public.printers;
+create policy "printers_delete" on public.printers for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 13. PRINT JOBS (history + reprint)
+-- ════════════════════════════════════════════════════════════════════════════
+create table if not exists public.print_jobs (
+    id           text primary key,
+    actor_email  text,
+    entity_type  text,
+    entity_id    text,
+    entity_label text,
+    format       text default 'ZPL',
+    dpi          integer default 203,
+    quantity     integer default 1,
+    printer_name text default '',
+    created_at   timestamptz not null default now()
+);
+
+create index if not exists print_jobs_created_idx on public.print_jobs (created_at desc);
+
+alter table public.print_jobs enable row level security;
+
+drop policy if exists "print_jobs_select" on public.print_jobs;
+create policy "print_jobs_select" on public.print_jobs for select using (auth.role() = 'authenticated');
+drop policy if exists "print_jobs_insert" on public.print_jobs;
+create policy "print_jobs_insert" on public.print_jobs for insert with check (auth.role() = 'authenticated');
+drop policy if exists "print_jobs_delete" on public.print_jobs;
+create policy "print_jobs_delete" on public.print_jobs for delete using (public.is_admin());
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 14. TEMPLATE VERSIONS (snapshots for restore)
+-- ════════════════════════════════════════════════════════════════════════════
+create table if not exists public.template_versions (
+    id           text primary key,
+    template_id  text not null,
+    title        text,
+    layout       jsonb,
+    sample_batch jsonb,
+    version      integer default 1,
+    saved_by     text,
+    created_at   timestamptz not null default now()
+);
+
+create index if not exists template_versions_tpl_idx on public.template_versions (template_id, created_at desc);
+
+alter table public.template_versions enable row level security;
+
+drop policy if exists "template_versions_select" on public.template_versions;
+create policy "template_versions_select" on public.template_versions for select using (auth.role() = 'authenticated');
+drop policy if exists "template_versions_insert" on public.template_versions;
+create policy "template_versions_insert" on public.template_versions
+  for insert with check (public.is_designer());
+drop policy if exists "template_versions_delete" on public.template_versions;
+create policy "template_versions_delete" on public.template_versions for delete using (public.is_admin());

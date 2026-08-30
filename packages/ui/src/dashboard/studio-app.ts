@@ -16,6 +16,7 @@ import { hydrateSerialLogicRulesFromDb, hydrateBatchLogicRulesFromDb } from './s
 import { hydrateRolePermissionsFromDb, hasPageAccess } from './permissions';
 import type { PageKey } from './permissions';
 import { AccessControlView } from './access-control';
+import { AuditLogView, PrintersView, PrintJobsView } from './settings-tools';
 import { BrandingManagerView } from './branding-manager';
 import { loadCompanyProfile, logoBadgeHtml, CompanyProfile } from './branding';
 import { AuthView } from './auth-view';
@@ -642,29 +643,36 @@ export class QRStudioApp {
                 <button class="settings-sub-tab" data-sub="master">🗃️ Master Data</button>
                 <button class="settings-sub-tab" data-sub="branding">🏷️ Company</button>
                 <button class="settings-sub-tab" data-sub="access">🔐 Access Control</button>
+                <button class="settings-sub-tab" data-sub="audit">📋 Audit</button>
+                <button class="settings-sub-tab" data-sub="printers">🖨️ Printers</button>
+                <button class="settings-sub-tab" data-sub="printjobs">🖨️ Print Jobs</button>
             </div>
             <div id="settings-page-api" style="display:block;"></div>
             <div id="settings-page-master" style="display:none;"></div>
             <div id="settings-page-branding" style="display:none;"></div>
             <div id="settings-page-access" style="display:none;"></div>
+            <div id="settings-page-audit" style="display:none;"></div>
+            <div id="settings-page-printers" style="display:none;"></div>
+            <div id="settings-page-printjobs" style="display:none;"></div>
         </div>`;
 
         this.settingsContainer.querySelectorAll<HTMLButtonElement>('.settings-sub-tab').forEach(btn => {
             btn.addEventListener('click', () => {
                 const sub = btn.dataset.sub;
                 this.settingsContainer.querySelectorAll('.settings-sub-tab').forEach(b => b.classList.toggle('active', b === btn));
-                const api = this.settingsContainer.querySelector('#settings-page-api') as HTMLElement;
-                const master = this.settingsContainer.querySelector('#settings-page-master') as HTMLElement;
-                const branding = this.settingsContainer.querySelector('#settings-page-branding') as HTMLElement;
-                const access = this.settingsContainer.querySelector('#settings-page-access') as HTMLElement;
-                if (api) api.style.display = sub === 'api' ? 'block' : 'none';
-                if (master) master.style.display = sub === 'master' ? 'block' : 'none';
-                if (branding) branding.style.display = sub === 'branding' ? 'block' : 'none';
-                if (access) access.style.display = sub === 'access' ? 'block' : 'none';
-                if (sub === 'access' && access && !access.dataset.init) {
-                    access.dataset.init = '1';
-                    new AccessControlView(access);
-                }
+                const pages = ['api', 'master', 'branding', 'access', 'audit', 'printers', 'printjobs'];
+                pages.forEach(p => {
+                    const el = this.settingsContainer.querySelector(`#settings-page-${p}`) as HTMLElement;
+                    if (el) el.style.display = sub === p ? 'block' : 'none';
+                });
+                const els: Record<string, (host: HTMLElement) => void> = {
+                    access: h => { if (!h.dataset.init) { h.dataset.init = '1'; new AccessControlView(h); } },
+                    audit: h => { if (!h.dataset.init) { h.dataset.init = '1'; new AuditLogView(h); } },
+                    printers: h => { if (!h.dataset.init) { h.dataset.init = '1'; new PrintersView(h); } },
+                    printjobs: h => { if (!h.dataset.init) { h.dataset.init = '1'; new PrintJobsView(h); } }
+                };
+                const host = this.settingsContainer.querySelector(`#settings-page-${sub}`) as HTMLElement;
+                if (host && els[sub]) els[sub](host);
             });
         });
 

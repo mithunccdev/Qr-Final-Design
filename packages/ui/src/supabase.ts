@@ -637,6 +637,7 @@ export class SupabaseService {
                 console.error('Supabase saveProduct error:', error.message);
                 return false;
             }
+            await this.logAudit({ action: 'update', entityType: 'product', entityId: product.id, entityLabel: product.title || product.sku });
             return true;
         } catch (e) {
             console.error('Error saving product to Supabase', e);
@@ -694,6 +695,7 @@ export class SupabaseService {
         if (!this.client || !this.config.enabled) return false;
         try {
             const { error } = await this.client.from('products').delete().eq('id', id);
+            await this.logAudit({ action: 'delete', entityType: 'product', entityId: id, entityLabel: id });
             return !error;
         } catch (e) {
             return false;
@@ -823,6 +825,7 @@ export class SupabaseService {
         if (!this.client || !this.config.enabled) return false;
         try {
             const { error } = await this.client.from('serialized_units').delete().eq('id', id);
+            await this.logAudit({ action: 'delete', entityType: 'serial', entityId: id, entityLabel: id });
             return !error;
         } catch (e) {
             return false;
@@ -953,6 +956,7 @@ export class SupabaseService {
             };
 
             const { error } = await this.client.from('employees').upsert(row);
+            await this.logAudit({ action: 'update', entityType: 'employee', entityId: emp.id, entityLabel: emp.name || emp.employeeId });
             return !error;
         } catch (e) {
             return false;
@@ -963,6 +967,7 @@ export class SupabaseService {
         if (!this.client || !this.config.enabled) return false;
         try {
             const { error } = await this.client.from('employees').delete().eq('id', id);
+            await this.logAudit({ action: 'delete', entityType: 'employee', entityId: id, entityLabel: id });
             return !error;
         } catch (e) {
             return false;
@@ -1045,6 +1050,7 @@ export class SupabaseService {
                 console.warn('Supabase saveTemplate error:', error.message);
                 return false;
             }
+            await this.logAudit({ action: 'update', entityType: 'template', entityId: tpl.id, entityLabel: tpl.title });
             return true;
         } catch (e: any) {
             console.warn('Supabase saveTemplate error:', e?.message || e);
@@ -1056,6 +1062,7 @@ export class SupabaseService {
         if (!this.client || !this.config.enabled) return false;
         try {
             const { error } = await this.client.from('templates').delete().eq('id', id);
+            await this.logAudit({ action: 'delete', entityType: 'template', entityId: id, entityLabel: id });
             return !error;
         } catch (e) {
             return false;
@@ -1125,6 +1132,7 @@ export class SupabaseService {
         if (!this.client || !this.config.enabled) return false;
         try {
             const { error } = await this.client.from('master_data').delete().eq('id', `${type}:${code}`);
+            await this.logAudit({ action: 'delete', entityType: 'master_data', entityId: `${type}:${code}`, entityLabel: code });
             return !error;
         } catch (e) {
             return false;
@@ -1210,6 +1218,170 @@ export class SupabaseService {
         } catch (e: any) {
             console.warn('Supabase saveRolePermissions error:', e?.message || e);
             return false;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // AUDIT TRAIL
+    // ════════════════════════════════════════════════════════════════════════════
+    public async logAudit(entry: { action: string; entityType: string; entityId?: string; entityLabel?: string; changes?: any }): Promise<void> {
+        if (!this.client || !this.config.enabled) return;
+        try {
+            const me = this.currentUserProfile;
+            await this.client.from('audit_logs').insert({
+                id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                actor_email: me?.email || 'system',
+                actor_role: me?.role || 'system',
+                action: entry.action,
+                entity_type: entry.entityType,
+                entity_id: entry.entityId || '',
+                entity_label: entry.entityLabel || '',
+                changes: entry.changes || {},
+                created_at: new Date().toISOString()
+            });
+        } catch (e) {
+            console.warn('logAudit notice (non-fatal):', e);
+        }
+    }
+
+    public async fetchAuditLogs(limit = 200): Promise<any[] | null> {
+        if (!this.client || !this.config.enabled) return null;
+        try {
+            const { data, error } = await this.client
+                .from('audit_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(limit);
+            if (error) { console.warn('fetchAuditLogs:', error.message); return null; }
+            return data || [];
+        } catch (e) {
+            return null;
+        }
+    }
+
+    public async clearAuditLogs(): Promise<boolean> {
+        if (!this.client || !this.config.enabled) return false;
+        try {
+            const { error } = await this.client.from('audit_logs').delete().gte('created_at', '1970-01-01');
+            return !error;
+        } catch {
+            return false;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // PRINTERS (device presets)
+    // ════════════════════════════════════════════════════════════════════════════
+    public async fetchPrinters(): Promise<any[] | null> {
+        if (!this.client || !this.config.enabled) return null;
+        try {
+            const { data, error } = await this.client.from('printers').select('*').order('created_at', { ascending: true });
+            if (error) { console.warn('fetchPrinters:', error.message); return null; }
+            return data || [];
+        } catch (e) {
+            return null;
+        }
+    }
+
+    public async savePrinter(p: any): Promise<boolean> {
+        if (!this.client || !this.config.enabled) return false;
+        const by = this.currentUserProfile?.email || this.currentUserProfile?.id || null;
+        try {
+            const row = {
+                id: p.id,
+                name: p.name, brand: p.brand || 'Zebra', model: p.model || '',
+                dpi: p.dpi || 203, label_width_mm: p.labelWidthMm || 100, label_height_mm: p.labelHeightMm || 50,
+                is_default: p.isDefault || false,
+                created_by: p.createdBy || by, updated_by: by,
+                updated_at: new Date().toISOString()
+            };
+            const { error } = await this.client.from('printers').upsert(row);
+            return !error;
+        } catch (e) {
+            console.warn('savePrinter:', e);
+            return false;
+        }
+    }
+
+    public async deletePrinter(id: string): Promise<boolean> {
+        if (!this.client || !this.config.enabled) return false;
+        try {
+            const { error } = await this.client.from('printers').delete().eq('id', id);
+            return !error;
+        } catch {
+            return false;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // PRINT JOBS (history + reprint)
+    // ════════════════════════════════════════════════════════════════════════════
+    public async logPrintJob(job: { entityType: string; entityId?: string; entityLabel?: string; format?: string; dpi?: number; quantity?: number; printerName?: string }): Promise<void> {
+        if (!this.client || !this.config.enabled) return;
+        try {
+            const me = this.currentUserProfile;
+            await this.client.from('print_jobs').insert({
+                id: `prn-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                actor_email: me?.email || 'system',
+                entity_type: job.entityType,
+                entity_id: job.entityId || '',
+                entity_label: job.entityLabel || '',
+                format: job.format || 'ZPL',
+                dpi: job.dpi || 203,
+                quantity: job.quantity || 1,
+                printer_name: job.printerName || '',
+                created_at: new Date().toISOString()
+            });
+        } catch (e) {
+            console.warn('logPrintJob notice (non-fatal):', e);
+        }
+    }
+
+    public async fetchPrintJobs(limit = 100): Promise<any[] | null> {
+        if (!this.client || !this.config.enabled) return null;
+        try {
+            const { data, error } = await this.client.from('print_jobs').select('*').order('created_at', { ascending: false }).limit(limit);
+            if (error) { console.warn('fetchPrintJobs:', error.message); return null; }
+            return data || [];
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // TEMPLATE VERSIONS (snapshots for restore)
+    // ════════════════════════════════════════════════════════════════════════════
+    public async saveTemplateVersion(v: { templateId: string; title?: string; layout?: any; sampleBatch?: any; version?: number }): Promise<void> {
+        if (!this.client || !this.config.enabled) return;
+        try {
+            const me = this.currentUserProfile;
+            await this.client.from('template_versions').insert({
+                id: `tv-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                template_id: v.templateId,
+                title: v.title || '',
+                layout: v.layout || {},
+                sample_batch: v.sampleBatch || [],
+                version: v.version || 1,
+                saved_by: me?.email || 'system'
+            });
+        } catch (e) {
+            console.warn('saveTemplateVersion notice (non-fatal):', e);
+        }
+    }
+
+    public async fetchTemplateVersions(templateId: string): Promise<any[] | null> {
+        if (!this.client || !this.config.enabled) return null;
+        try {
+            const { data, error } = await this.client
+                .from('template_versions')
+                .select('*')
+                .eq('template_id', templateId)
+                .order('created_at', { ascending: false })
+                .limit(50);
+            if (error) { console.warn('fetchTemplateVersions:', error.message); return null; }
+            return data || [];
+        } catch (e) {
+            return null;
         }
     }
 

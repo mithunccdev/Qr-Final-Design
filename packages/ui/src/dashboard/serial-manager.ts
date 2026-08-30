@@ -215,6 +215,9 @@ export class SerialManagerView {
                         <button class="btn btn-outline" id="btn-export-serials-csv" title="Export serial numbers to CSV">
                             📥 Export CSV
                         </button>
+                        <button class="btn btn-outline" id="btn-scan-verify" title="Scan a printed label to verify">
+                            📷 Verify
+                        </button>
                         <button class="btn btn-outline" id="btn-print-selected-serials" style="${this.selectedSerialIds.size > 0 ? 'border-color: var(--accent); color: var(--accent);' : ''}">
                             🖨️ Print Selected (${this.selectedSerialIds.size})
                         </button>
@@ -483,6 +486,11 @@ export class SerialManagerView {
             this.exportCSV();
         });
 
+        // Verify by scan
+        this.container.querySelector('#btn-scan-verify')?.addEventListener('click', () => {
+            this.openVerifyScanner();
+        });
+
         // Print Selected
         this.container.querySelector('#btn-print-selected-serials')?.addEventListener('click', () => {
             const targets = this.selectedSerialIds.size > 0
@@ -710,6 +718,88 @@ export class SerialManagerView {
             this.render();
             alert(`✅ Successfully generated ${units.length} unique serial number(s) adhering to ${plant} logic!`);
         });
+    }
+
+    /** Open a camera scanner to verify a printed label (uses the browser BarcodeDetector). */
+    private openVerifyScanner(): void {
+        const modalRoot = this.container.querySelector('#serial-modal-root') as HTMLElement;
+        if (!modalRoot) return;
+        modalRoot.innerHTML = `
+        <div class="modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;">
+            <div class="modal-card" style="background:var(--surface);border-radius:14px;width:420px;max-width:95vw;padding:20px;text-align:center;">
+                <h3 style="margin:0 0 8px 0;">📷 Scan to Verify</h3>
+                <p style="margin:0 0 12px 0;font-size:0.8125rem;color:var(--text-secondary);">Point the camera at a printed QR / barcode.</p>
+                <div style="position:relative;background:#000;border-radius:10px;overflow:hidden;height:220px;">
+                    <video id="scan-video" playsinline style="width:100%;height:100%;object-fit:cover;"></video>
+                </div>
+                <div id="scan-result" style="margin-top:12px;font-size:0.875rem;"></div>
+                <div style="display:flex;justify-content:center;gap:8px;margin-top:12px;">
+                    <button class="btn btn-outline" id="scan-close">Close</button>
+                </div>
+            </div>
+        </div>`;
+        const close = () => { this.stopStream(); modalRoot.innerHTML = ''; };
+        modalRoot.querySelector('#scan-close')?.addEventListener('click', close);
+        this.startStream();
+    }
+
+    private stream: MediaStream | null = null;
+    private scanTimer: any = null;
+
+    private async startStream(): Promise<void> {
+        const modalRoot = this.container.querySelector('#serial-modal-root') as HTMLElement;
+        const video = modalRoot?.querySelector<HTMLVideoElement>('#scan-video');
+        const resultEl = modalRoot?.querySelector('#scan-result');
+        // @ts-ignore
+        const Detector = (window as any).BarcodeDetector;
+        if (!video || !resultEl) return;
+        if (typeof Detector === 'undefined') {
+            resultEl.innerHTML = '<span style="color:#fbbf24;">⚠️ Camera scanning is not supported in this browser. Use Chrome/Edge.</span>';
+            return;
+        }
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            video.srcObject = this.stream;
+            await video.play();
+            const detector = new Detector({ formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'upc_a'] });
+            this.scanTimer = setInterval(async () => {
+                if (!video.videoWidth) return;
+                try {
+                    const codes = await detector.detect(video);
+                    if (codes && codes.length > 0) {
+                        const val = codes[0].rawValue?.trim();
+                        if (val) { this.handleScannedValue(val, resultEl); this.stopStream(); }
+                    }
+                } catch (e) { /* continue */ }
+            }, 500);
+        } catch (e) {
+            resultEl.innerHTML = '<span style="color:#f87171;">Unable to access camera. Please allow camera permission.</span>';
+        }
+    }
+
+    private handleScannedValue(val: string, resultEl: Element | null): void {
+        const list = this.serials || [];
+        // Try to match the scanned value to a serial number (case-insensitive, trimmed).
+        const match = list.find(s => s.serialNumber.trim().toUpperCase() === val.toUpperCase())
+            || list.find(s => val.toUpperCase().includes(s.serialNumber.trim().toUpperCase()));
+        if (!resultEl) return;
+        if (match) {
+            resultEl.innerHTML = `<div style="color:#059669;font-weight:700;">✔ Verified</div>
+                <div style="font-size:0.8125rem;margin-top:4px;">Serial: <strong>${esc(match.serialNumber)}</strong><br/>
+                Product: ${esc(match.productTitle || match.sku)}<br/>
+                Plant: ${esc(match.plant || '—')} · Status: ${esc(match.status || '—')}</div>`;
+        } else {
+            resultEl.innerHTML = `<div style="color:#ef4444;font-weight:700;">✖ Not found in system</div>
+                <div style="font-size:0.8125rem;margin-top:4px;">Scanned: ${esc(val)}</div>`;
+        }
+    }
+
+    private stopStream(): void {
+        if (this.scanTimer) { clearInterval(this.scanTimer); this.scanTimer = null; }
+        if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
+        const modalRoot = this.container.querySelector('#serial-modal-root') as HTMLElement;
+        const video = modalRoot?.querySelector<HTMLVideoElement>('#scan-video');
+        if (video) video.srcObject = null;
     }
 
     private openViewQRModal(unit: SerializedUnit) {
