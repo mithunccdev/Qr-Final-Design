@@ -1316,9 +1316,22 @@ export class QRPrintDashboard {
                     </div>
                 </div>
 
-                <!-- SETUP BAR -->
+                <!-- SETUP BAR (batch · template · quantity · printer, inline) -->
                 <div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--border-color,#e2e8f0);background:#fbfcfe;align-items:flex-end;">
-                    <div style="flex:1;min-width:200px;">
+                    <div style="display:flex;align-items:flex-end;gap:6px;">
+                        <div style="flex:0 1 190px;">
+                            <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">Batch</label>
+                            <select id="bp-batch" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;">
+                                <option value="__all__" ${this.activeBatchNumber === '__all__' ? 'selected' : ''}>All serials</option>
+                                ${batches.map(b => `
+                                    <option value="${this.escapeHtml(b.batchNumber)}" ${this.activeBatchNumber === b.batchNumber ? 'selected' : ''}>${this.escapeHtml(b.batchNumber)} · ${this.escapeHtml(String(b.lotQuantity || 0))} units</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        <button class="btn btn-outline" id="bp-load" title="Load records for this batch">↻</button>
+                    </div>
+
+                    <div style="flex:0 1 220px;">
                         <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">1 · Template</label>
                         <select id="bp-template" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;">
                             ${tpls.map(t => `
@@ -1326,11 +1339,11 @@ export class QRPrintDashboard {
                             `).join('')}
                         </select>
                     </div>
-                    <div style="flex:0 1 120px;">
+                    <div style="flex:0 1 90px;">
                         <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">2 · Quantity</label>
-                        <input type="number" id="bp-qty" min="1" value="${this.loadDefault('quick.print.qty') || Math.max(1, selectedTotal || 1)}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;" />
+                        <input type="number" id="bp-qty" min="1" value="${this.quickQty || Math.max(1, selectedTotal || 1)}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;" />
                     </div>
-                    <div style="flex:1;min-width:200px;">
+                    <div style="flex:0 1 250px;">
                         <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">3 · Printer</label>
                         <select id="bp-printer" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;">
                             ${this.printers.length === 0 ? '<option value="">No printers — add in Settings</option>' : this.printers.map(p => `
@@ -1338,20 +1351,8 @@ export class QRPrintDashboard {
                             `).join('')}
                         </select>
                     </div>
-                    <button class="btn btn-outline" id="bp-save-default" title="Save these as your default print settings">💾 Save as Default</button>
-                </div>
-
-                <!-- BATCH / RECORDS -->
-                <div style="display:flex;gap:10px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border-color,#e2e8f0);align-items:center;">
-                    <label style="font-size:0.8125rem;font-weight:700;color:var(--text-primary);">Batch:</label>
-                    <select id="bp-batch" style="padding:7px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;min-width:220px;flex:1;max-width:360px;">
-                        <option value="__all__" ${this.activeBatchNumber === '__all__' ? 'selected' : ''}>All serials</option>
-                        ${batches.map(b => `
-                            <option value="${this.escapeHtml(b.batchNumber)}" ${this.activeBatchNumber === b.batchNumber ? 'selected' : ''}>${this.escapeHtml(b.batchNumber)} · ${this.escapeHtml(String(b.lotQuantity || 0))} units</option>
-                        `).join('')}
-                    </select>
-                    <button class="btn btn-outline" id="bp-load">↻ Load</button>
-                    <span style="font-size:0.75rem;color:var(--text-secondary);margin-left:auto;">${activeCount} of ${totalCount} selected · ${selectedTotal} labels</span>
+                    <button class="btn btn-outline" id="bp-save-default" title="Save these as your default print settings">💾 Save</button>
+                    <span style="font-size:0.75rem;color:var(--text-secondary);white-space:nowrap;margin-left:auto;">${activeCount} of ${totalCount} selected · ${selectedTotal} labels</span>
                 </div>
 
                 <!-- RECORDS TABLE (read-only: serial + sku + qty + select) -->
@@ -1368,7 +1369,7 @@ export class QRPrintDashboard {
                                     <td style="text-align:center;"><input type="checkbox" class="bp-row-chk" data-i="${i}" ${this.selectedIndices.has(i) ? 'checked' : ''} /></td>
                                     <td style="font-family:monospace;font-weight:600;">${this.escapeHtml(r.serialNumber || '')}</td>
                                     <td>${this.escapeHtml(r.sku || r.productTitle || '')}</td>
-                                    <td style="text-align:center;"><input type="number" class="bp-row-qty" data-i="${i}" min="1" value="${r._qty || 1}" style="width:56px;padding:4px 6px;border:1px solid var(--border-color,#cbd5e1);border-radius:6px;text-align:center;" /></td>
+                                    <td style="text-align:center;"><input type="number" class="bp-row-qty" data-i="${i}" min="1" value="${r._qty || this.quickQty || 1}" style="width:56px;padding:4px 6px;border:1px solid var(--border-color,#cbd5e1);border-radius:6px;text-align:center;" /></td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -1384,6 +1385,7 @@ export class QRPrintDashboard {
     }
 
     private activeBatchNumber: string = '__all__';
+    private quickQty: number = 0;
 
     private currentTemplateId(): string {
         return this.availableTemplates.find(t => t.layout && JSON.stringify(t.layout) === JSON.stringify(this.currentLayout))?.id
@@ -1403,8 +1405,13 @@ export class QRPrintDashboard {
         if (batchNumber !== '__all__') rows = allSerials.filter((s: any) => s.batchNumber === batchNumber);
         this.dataset = rows.map((s: any) => ({
             serialNumber: s.serialNumber, sku: s.sku, productTitle: s.productTitle,
-            category: s.category, plant: s.plant, color: s.color, warranty: s.warranty, _qty: 1, ...(s.variables || {})
+            category: s.category, plant: s.plant, color: s.color, warranty: s.warranty, _qty: this.quickQty || 1, ...(s.variables || {})
         }));
+        // Default quantity = saved default, else number of records in this batch.
+        if (!this.quickQty) {
+            this.quickQty = parseInt(this.loadDefault('quick.print.qty')) || Math.max(1, this.dataset.length || 1);
+        }
+        this.dataset.forEach((r: any) => { r._qty = this.quickQty; });
         this.selectedIndices = new Set(this.dataset.map((_, i) => i));
         this.activeBatchNumber = batchNumber;
         this.render();
@@ -1423,6 +1430,12 @@ export class QRPrintDashboard {
             this.saveDefault('quick.print.qty', q('#bp-qty')?.value || '1');
             this.saveDefault('quick.print.printer', q('#bp-printer')?.value || '');
             alert('✅ Default print settings saved.');
+        });
+        // Sync the Quantity box to every per-record QTY (editable after).
+        q('#bp-qty')?.addEventListener('change', (e: any) => {
+            this.quickQty = Math.max(1, parseInt(e.target.value || '1', 10) || 1);
+            this.dataset.forEach((r: any) => { r._qty = this.quickQty; });
+            this.render();
         });
         q('#bp-load')?.addEventListener('click', () => {
             const v = q('#bp-batch')?.value || '__all__';
