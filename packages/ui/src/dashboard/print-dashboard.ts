@@ -199,33 +199,41 @@ export class QRPrintDashboard {
         alert(`✅ Generated ${units.length} serial(s) for ${product.sku} in batch ${batchNumber}.`);
     }
 
-    /** "Quick Print": records a print job for the current dataset (uses saved defaults). */
+    /** "Quick Print": records a print job for the selected records (respects per-row qty). */
     private quickPrint(): void {
-        const qtyEl = this.container.querySelector<HTMLInputElement>('#quick-qty');
-        const printerEl = this.container.querySelector<HTMLSelectElement>('#quick-printer');
-        const qty = Math.max(1, parseInt(qtyEl?.value || '1', 10) || 1);
+        const printerEl = this.container.querySelector<HTMLSelectElement>('#bp-printer');
         const printer = this.printers.find(p => p.id === (printerEl?.value || this.selectedPrinterId));
         const dpi = printer?.dpi || 203;
 
-        let rows = this.dataset;
-        if (rows.length === 0) {
-            // No data loaded — build a simple placeholder dataset of `qty` rows.
-            rows = Array.from({ length: qty }, (_, i) => ({ serialNumber: `SN-${String(i + 1).padStart(4, '0')}`, title: this.currentLayout?.name || 'Label' }));
+        // Expand selected records by their per-row quantity (default 1)
+        const expanded: Record<string, any>[] = [];
+        this.dataset.forEach((r, i) => {
+            if (this.selectedIndices.has(i)) {
+                const qty = Math.max(1, parseInt(String((r as any)._qty || 1), 10) || 1);
+                for (let k = 0; k < qty; k++) expanded.push({ ...r });
+            }
+        });
+
+        if (expanded.length === 0) {
+            // Nothing selected — build a placeholder set of `qty` rows from the field value
+            const qtyEl = this.container.querySelector<HTMLInputElement>('#bp-qty');
+            const qty = Math.max(1, parseInt(qtyEl?.value || '1', 10) || 1);
+            for (let k = 0; k < qty; k++) expanded.push({ serialNumber: `SN-${String(k + 1).padStart(4, '0')}`, title: this.currentLayout?.name || 'Label' });
         }
 
-        const selected = new Set(rows.map((_, i) => i));
+        const selected = new Set(expanded.map((_, i) => i));
         let zpl = '';
         try {
-            zpl = this.renderer.generateBatchZPL(this.currentLayout, rows, selected, dpi as any);
+            zpl = this.renderer.generateBatchZPL(this.currentLayout, expanded, selected, dpi as any);
         } catch { /* non-fatal */ }
 
         void supabaseService.logPrintJob({
-            entityType: 'label', entityLabel: `${rows.length} label(s) · ${this.currentLayout?.name || ''}`,
-            format: 'ZPL', dpi, quantity: rows.length, printerName: printer?.name || ''
+            entityType: 'label', entityLabel: `${expanded.length} label(s) · ${this.currentLayout?.name || ''}`,
+            format: 'ZPL', dpi, quantity: expanded.length, printerName: printer?.name || ''
         });
-        void supabaseService.logAudit({ action: 'print', entityType: 'print_job', entityId: printer?.id || '', entityLabel: `${rows.length} label(s)` });
+        void supabaseService.logAudit({ action: 'print', entityType: 'print_job', entityId: printer?.id || '', entityLabel: `${expanded.length} label(s)` });
 
-        alert(`🖨️ Print job started on "${printer?.name || 'default printer'}" — ${rows.length} label(s).`);
+        alert(`🖨️ Print job started on "${printer?.name || 'default printer'}" — ${expanded.length} label(s).`);
         if (zpl) this.showZPLModal();
     }
 
@@ -422,8 +430,11 @@ export class QRPrintDashboard {
     }
 
     private render() {
+        // ── Simplified print view (clean, focused on template → qty → printer → print) ──
+        this.renderSimplified();
+        return;
+        // eslint-disable-next-line no-unreachable
         const totalSheets = this.renderer.calculateSheetCount(this.dataset.length, this.activePreset, this.startOffset);
-        if (this.currentSheetIndex >= totalSheets) this.currentSheetIndex = Math.max(0, totalSheets - 1);
 
         const vars = this.extractVariables();
         const activeCount = this.selectedIndices.size;
@@ -1276,6 +1287,164 @@ export class QRPrintDashboard {
     private renderActiveSheetDebounced() {
         clearTimeout(this.debounceTimer);
         this.debounceTimer = setTimeout(() => this.renderActiveSheet(), 200);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // SIMPLIFIED PRINT VIEW
+    // ────────────────────────────────────────────────────────────────────────────
+    private renderSimplified(): void {
+        const tpls = this.getAllowedTemplates();
+        const activeCount = this.selectedIndices.size;
+        const totalCount = this.dataset.length;
+        const selectedTotal = this.dataset.reduce((sum, r, i) => this.selectedIndices.has(i) ? sum + (r._qty || 1) : sum, 0);
+        const batches = this.listBatches();
+
+        this.container.innerHTML = `
+        <div class="entity-manager-root" style="padding:16px 24px;">
+            <div class="manager-card-panel" style="flex:1;">
+                <div class="panel-header-row">
+                    <div>
+                        <h2 class="panel-heading">🖨️ Print</h2>
+                        <p class="panel-subheading">Pick a template, quantity, and printer — then print.</p>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-outline" id="bp-export-pdf">📄 Export PDF</button>
+                        <button class="btn btn-outline" id="bp-export-zpl">🧾 ZPL</button>
+                        <button class="btn btn-primary" id="bp-print">🖨️ Print Now</button>
+                    </div>
+                </div>
+
+                <!-- SETUP BAR -->
+                <div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--border-color,#e2e8f0);background:#fbfcfe;align-items:flex-end;">
+                    <div style="flex:1;min-width:200px;">
+                        <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">1 · Template</label>
+                        <select id="bp-template" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;">
+                            ${tpls.map(t => `
+                                <option value="${this.escapeHtml(t.id)}" ${t.id === this.currentTemplateId() ? 'selected' : ''}>${this.escapeHtml(t.title)}</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <div style="flex:0 1 120px;">
+                        <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">2 · Quantity</label>
+                        <input type="number" id="bp-qty" min="1" value="${this.loadDefault('quick.print.qty') || Math.max(1, selectedTotal || 1)}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;" />
+                    </div>
+                    <div style="flex:1;min-width:200px;">
+                        <label style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">3 · Printer</label>
+                        <select id="bp-printer" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;">
+                            ${this.printers.length === 0 ? '<option value="">No printers — add in Settings</option>' : this.printers.map(p => `
+                                <option value="${this.escapeHtml(p.id)}" ${p.id === this.selectedPrinterId ? 'selected' : ''}>${this.escapeHtml(p.name)} · ${this.escapeHtml(String(p.dpi))} DPI · ${this.escapeHtml(String(p.label_width_mm))}×${this.escapeHtml(String(p.label_height_mm))}mm${p.is_default ? ' (default)' : ''}</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <button class="btn btn-outline" id="bp-save-default" title="Save these as your default print settings">💾 Save as Default</button>
+                </div>
+
+                <!-- BATCH / RECORDS -->
+                <div style="display:flex;gap:10px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--border-color,#e2e8f0);align-items:center;">
+                    <label style="font-size:0.8125rem;font-weight:700;color:var(--text-primary);">Batch:</label>
+                    <select id="bp-batch" style="padding:7px 10px;border:1px solid var(--border-color,#cbd5e1);border-radius:8px;font-size:0.8125rem;min-width:220px;flex:1;max-width:360px;">
+                        <option value="__all__" ${this.activeBatchNumber === '__all__' ? 'selected' : ''}>All serials</option>
+                        ${batches.map(b => `
+                            <option value="${this.escapeHtml(b.batchNumber)}" ${this.activeBatchNumber === b.batchNumber ? 'selected' : ''}>${this.escapeHtml(b.batchNumber)} · ${this.escapeHtml(String(b.lotQuantity || 0))} units</option>
+                        `).join('')}
+                    </select>
+                    <button class="btn btn-outline" id="bp-load">↻ Load</button>
+                    <span style="font-size:0.75rem;color:var(--text-secondary);margin-left:auto;">${activeCount} of ${totalCount} selected · ${selectedTotal} labels</span>
+                </div>
+
+                <!-- RECORDS TABLE (read-only: serial + sku + qty + select) -->
+                <div style="overflow-x:auto;">
+                    <table class="manager-data-table">
+                        <thead>
+                            <tr><th style="width:52px;text-align:center;">PRINT</th><th>SERIAL NUMBER</th><th>PRODUCT SKU</th><th style="width:80px;text-align:center;">QTY</th></tr>
+                        </thead>
+                        <tbody>
+                            ${totalCount === 0 ? `
+                                <tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-secondary);">No records. Pick a batch above and click Load, or generate from the Generate page.</td></tr>
+                            ` : this.dataset.map((r, i) => `
+                                <tr>
+                                    <td style="text-align:center;"><input type="checkbox" class="bp-row-chk" data-i="${i}" ${this.selectedIndices.has(i) ? 'checked' : ''} /></td>
+                                    <td style="font-family:monospace;font-weight:600;">${this.escapeHtml(r.serialNumber || '')}</td>
+                                    <td>${this.escapeHtml(r.sku || r.productTitle || '')}</td>
+                                    <td style="text-align:center;"><input type="number" class="bp-row-qty" data-i="${i}" min="1" value="${r._qty || 1}" style="width:56px;padding:4px 6px;border:1px solid var(--border-color,#cbd5e1);border-radius:6px;text-align:center;" /></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+
+        this.bindSimplified();
+    }
+
+    private activeBatchNumber: string = '__all__';
+
+    private currentTemplateId(): string {
+        return this.availableTemplates.find(t => t.layout && JSON.stringify(t.layout) === JSON.stringify(this.currentLayout))?.id
+            || this.availableTemplates[0]?.id || '';
+    }
+
+    private listBatches(): any[] {
+        try {
+            const r = localStorage.getItem('qrlayout_db_batches_v2');
+            return r ? JSON.parse(r) : [];
+        } catch { return []; }
+    }
+
+    private loadRecordsForBatch(batchNumber: string): void {
+        const allSerials = (() => { try { const r = localStorage.getItem('qrlayout_db_serials_v2'); return r ? JSON.parse(r) : []; } catch { return []; } })();
+        let rows = allSerials;
+        if (batchNumber !== '__all__') rows = allSerials.filter((s: any) => s.batchNumber === batchNumber);
+        this.dataset = rows.map((s: any) => ({
+            serialNumber: s.serialNumber, sku: s.sku, productTitle: s.productTitle,
+            category: s.category, plant: s.plant, color: s.color, warranty: s.warranty, _qty: 1, ...(s.variables || {})
+        }));
+        this.selectedIndices = new Set(this.dataset.map((_, i) => i));
+        this.activeBatchNumber = batchNumber;
+        this.render();
+    }
+
+    private bindSimplified(): void {
+        const q = (s: string) => this.container.querySelector<any>(s);
+
+        q('#bp-template')?.addEventListener('change', (e: any) => {
+            const id = e.target.value;
+            const tpl = this.availableTemplates.find((t: any) => t.id === id);
+            if (tpl) { this.setLayout(JSON.parse(JSON.stringify(tpl.layout))); }
+        });
+        q('#bp-printer')?.addEventListener('change', (e: any) => { this.selectedPrinterId = e.target.value; });
+        q('#bp-save-default')?.addEventListener('click', () => {
+            this.saveDefault('quick.print.qty', q('#bp-qty')?.value || '1');
+            this.saveDefault('quick.print.printer', q('#bp-printer')?.value || '');
+            alert('✅ Default print settings saved.');
+        });
+        q('#bp-load')?.addEventListener('click', () => {
+            const v = q('#bp-batch')?.value || '__all__';
+            this.saveDefault('quick.print.batch', v);
+            this.loadRecordsForBatch(v);
+        });
+        q('#bp-batch')?.addEventListener('change', (e: any) => {
+            if (e.target.value !== '__all__') this.loadRecordsForBatch(e.target.value);
+        });
+        q('#bp-print')?.addEventListener('click', () => this.quickPrint());
+        q('#bp-export-pdf')?.addEventListener('click', () => this.exportBatchPDF());
+        q('#bp-export-zpl')?.addEventListener('click', () => this.showZPLModal());
+
+        this.container.querySelectorAll<HTMLInputElement>('.bp-row-chk').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const i = parseInt(cb.dataset.i!, 10);
+                if (cb.checked) this.selectedIndices.add(i); else this.selectedIndices.delete(i);
+                this.render();
+            });
+        });
+        this.container.querySelectorAll<HTMLInputElement>('.bp-row-qty').forEach(inp => {
+            inp.addEventListener('change', () => {
+                const i = parseInt(inp.dataset.i!, 10);
+                if (this.dataset[i]) this.dataset[i]._qty = Math.max(1, parseInt(inp.value || '1', 10) || 1);
+                this.render();
+            });
+        });
     }
 
     private setZoom(val: number) {
