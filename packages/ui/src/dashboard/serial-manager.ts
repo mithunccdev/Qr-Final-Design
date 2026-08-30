@@ -358,7 +358,7 @@ private plantFilter: string = 'All';
                                         ${new Date(s.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                     </td>
                                     <td>
-                                        <span class="nav-item-badge ${s.printCount > 0 ? 'badge-emerald' : 'badge-neutral'}">
+                                        <span class="nav-item-badge ${s.printCount > 0 ? 'badge-emerald' : 'badge-neutral'}" title="${s.printCount > 0 && s.lastPrintedAt ? 'Last printed: ' + new Date(s.lastPrintedAt).toLocaleString() : 'Not printed yet'}">
                                             ${s.printCount > 0 ? '🖨️ Printed' : '⏸️ Non-Printed'} ${s.printCount || 0}
                                         </span>
                                     </td>

@@ -296,7 +296,9 @@ export class BatchManagerView {
                                 </tr>
                             ` : filtered.map(b => {
                                 const isChecked = this.selectedBatchIds.has(b.id);
-                                const serialCount = this.serials.filter(s => (s as any).batchNumber === b.batchNumber).length;
+                                const batchSerials = this.serials.filter(s => (s as any).batchNumber === b.batchNumber);
+                                const serialCount = batchSerials.length;
+                                const printedCount = batchSerials.filter(s => (s as any).printCount > 0).length;
                                 return `
                                 <tr class="${isChecked ? 'row-selected' : ''}" data-id="${b.id}">
                                     <td>
@@ -306,6 +308,11 @@ export class BatchManagerView {
                                         <span class="code-badge-pill" style="font-weight: 700; font-family: monospace; font-size: 0.875rem; color: #4f46e5; background: rgba(79, 70, 229, 0.08); padding: 4px 8px; border-radius: 6px;">
                                             ${b.batchNumber}
                                         </span>
+                                        <div style="margin-top:4px;">
+                                            <span class="nav-item-badge ${printedCount > 0 ? 'badge-emerald' : 'badge-neutral'}" style="font-size: 0.72rem;">
+                                                🖨️ ${printedCount} / ${serialCount} printed
+                                            </span>
+                                        </div>
                                     </td>
                                     <td>
                                         <div>
