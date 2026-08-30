@@ -594,6 +594,9 @@ export class MasterDataManagerView {
         if (rule.inclusions.includeMonth && segs.month) {
             pills.push(`<span class="nav-item-badge badge-cyan">Month: <strong>${segs.month}</strong></span>`);
         }
+        if (rule.inclusions.includeDate && segs.date) {
+            pills.push(`<span class="nav-item-badge badge-cyan">Day: <strong>${segs.date}</strong></span>`);
+        }
         if (rule.inclusions.includeCategory && segs.category) {
             pills.push(`<span class="nav-item-badge badge-emerald">Cat: <strong>${segs.category}</strong></span>`);
         }
@@ -602,6 +605,12 @@ export class MasterDataManagerView {
         }
         if (rule.inclusions.includeSku && segs.sku) {
             pills.push(`<span class="nav-item-badge badge-neutral">SKU: <strong>${segs.sku}</strong></span>`);
+        }
+        if (rule.inclusions.includeShortCode && segs.short_code) {
+            pills.push(`<span class="nav-item-badge badge-neutral">Short: <strong>${segs.short_code}</strong></span>`);
+        }
+        if (rule.inclusions.includeCatalogCode && segs.catalog_code) {
+            pills.push(`<span class="nav-item-badge badge-neutral">Part: <strong>${segs.catalog_code}</strong></span>`);
         }
         if (rule.inclusions.includeColor && segs.color) {
             pills.push(`<span class="nav-item-badge badge-amber">Color: <strong>${segs.color}</strong></span>`);
@@ -943,8 +952,17 @@ export class MasterDataManagerView {
         if (rule.inclusions.includeMonth && segs.month) {
             pills.push(`<span class="nav-item-badge badge-cyan">Month: <strong>${segs.month}</strong></span>`);
         }
+        if (rule.inclusions.includeDate && segs.date) {
+            pills.push(`<span class="nav-item-badge badge-cyan">Day: <strong>${segs.date}</strong></span>`);
+        }
         if (rule.inclusions.includeCategory && segs.category) {
             pills.push(`<span class="nav-item-badge badge-emerald">Cat: <strong>${segs.category}</strong></span>`);
+        }
+        if (rule.inclusions.includeGroup && segs.group) {
+            pills.push(`<span class="nav-item-badge badge-emerald">Group: <strong>${segs.group}</strong></span>`);
+        }
+        if (rule.inclusions.includeVendor && segs.vendor) {
+            pills.push(`<span class="nav-item-badge badge-neutral">Vendor: <strong>${segs.vendor}</strong></span>`);
         }
         if (rule.inclusions.includeShift && segs.shift) {
             pills.push(`<span class="nav-item-badge badge-amber">Shift: <strong>${segs.shift}</strong></span>`);
