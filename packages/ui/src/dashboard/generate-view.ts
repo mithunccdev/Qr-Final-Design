@@ -19,7 +19,6 @@ export class GenerateView {
     private selectedProductId: string = '';
     private quantity = 1;
     private query = '';
-    private comboOpen = false;
 
     constructor(options: GenerateViewOptions) {
         this.container = options.container;
@@ -34,12 +33,6 @@ export class GenerateView {
 
     public render(): void {
         const selected = this.products.find(p => p.id === this.selectedProductId);
-        const filtered = this.query.trim()
-            ? this.products.filter(p =>
-                (p.sku || '').toLowerCase().includes(this.query.toLowerCase()) ||
-                (p.title || '').toLowerCase().includes(this.query.toLowerCase()))
-            : this.products;
-
         this.container.innerHTML = `
         <div class="entity-manager-root">
             <div class="manager-card-panel" style="max-width:760px;margin:0 auto;width:100%;">
@@ -55,19 +48,18 @@ export class GenerateView {
                         <label style="font-weight:700;">Product *</label>
                         <div style="position:relative;">
                             <input type="text" id="gen-product-search" autocomplete="off"
-                                placeholder="🔍 Search or select product…"
-                                value="${esc(this.query || (selected ? `${selected.sku} — ${selected.title}` : ''))}"
+                                placeholder="🔍 Type to search product (SKU or name)…"
+                                value="${esc(this.query)}"
                                 style="width:100%;padding:11px 12px;border:1px solid var(--border-color,#cbd5e1);border-radius:9px;font-size:0.875rem;" />
-                            ${this.comboOpen && filtered.length > 0 ? `
-                            <div style="position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid var(--border-color,#cbd5e1);border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:260px;overflow:auto;z-index:20;">
-                                ${filtered.map(p => `
-                                    <div class="gen-option" data-id="${esc(p.id)}" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:0.8125rem;">
+                            <div id="gen-product-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid var(--border-color,#cbd5e1);border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:260px;overflow:auto;z-index:20;">
+                                ${this.products.map(p => `
+                                    <div class="gen-option" data-id="${esc(p.id)}" data-sku="${esc(p.sku)}" data-title="${esc(p.title)}"
+                                        style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:0.8125rem;">
                                         <strong>${esc(p.sku)}</strong> — ${esc(p.title)}
                                         <span style="color:var(--text-secondary);font-size:0.72rem;margin-left:6px;">${esc(p.plant || '')}</span>
                                     </div>
                                 `).join('')}
                             </div>
-                            ` : ''}
                         </div>
                     </div>
 
@@ -76,12 +68,9 @@ export class GenerateView {
                         <input type="number" id="gen-qty" min="1" max="1000" value="${this.quantity}" />
                     </div>
 
-                    ${selected ? `
-                    <div style="background:var(--surface-muted,#f1f5f9);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;padding:12px 16px;font-size:0.8125rem;color:var(--text-secondary);">
-                        <strong style="color:var(--text-primary);">Product:</strong> ${esc(selected.title)}<br/>
-                        <strong style="color:var(--text-primary);">SKU:</strong> ${esc(selected.sku)} · <strong>Plant:</strong> ${esc(selected.plant || 'KSPL')}
+                    <div id="gen-product-summary" style="background:var(--surface-muted,#f1f5f9);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;padding:12px 16px;font-size:0.8125rem;color:var(--text-secondary);">
+                        ${selected ? `<strong style="color:var(--text-primary);">Product:</strong> ${esc(selected.title)}<br/><strong style="color:var(--text-primary);">SKU:</strong> ${esc(selected.sku)} · <strong>Plant:</strong> ${esc(selected.plant || 'KSPL')}` : 'Select a product above.'}
                     </div>
-                    ` : ''}
 
                     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px;">
                         <button class="btn btn-primary" id="btn-generate-now" ${this.products.length === 0 ? 'disabled' : ''}>💾 Generate &amp; Save</button>
@@ -95,25 +84,34 @@ export class GenerateView {
 
     private bind(): void {
         const search = this.container.querySelector<HTMLInputElement>('#gen-product-search');
+        const list = this.container.querySelector<HTMLElement>('#gen-product-list');
 
-        search?.addEventListener('focus', () => { this.comboOpen = true; this.query = ''; this.render(); this.refocus(); });
-        search?.addEventListener('input', (e) => {
-            this.query = (e.target as HTMLInputElement).value;
-            this.comboOpen = true;
-            this.render();
-            this.refocus();
-        });
+        const showFiltered = (filter: string) => {
+            const q = filter.trim().toLowerCase();
+            let any = false;
+            this.container.querySelectorAll<HTMLElement>('.gen-option').forEach(opt => {
+                const sku = (opt.dataset.sku || '').toLowerCase();
+                const title = (opt.dataset.title || '').toLowerCase();
+                const show = !q || sku.includes(q) || title.includes(q);
+                opt.style.display = show ? '' : 'none';
+                if (show) any = true;
+            });
+            if (list) list.style.display = any ? 'block' : 'none';
+        };
+
+        search?.addEventListener('focus', () => { if (list) list.style.display = 'block'; });
+        search?.addEventListener('input', () => { showFiltered(search.value); });
         search?.addEventListener('blur', () => {
-            // defer so the option click registers
-            setTimeout(() => { this.comboOpen = false; this.render(); }, 150);
+            setTimeout(() => { if (list) list.style.display = 'none'; }, 200);
         });
 
         this.container.querySelectorAll<HTMLElement>('.gen-option').forEach(opt => {
             opt.addEventListener('mousedown', (e) => {
                 e.preventDefault();
                 this.selectedProductId = opt.dataset.id!;
-                this.query = '';
-                this.comboOpen = false;
+                this.query = `${opt.dataset.sku} — ${opt.dataset.title}`;
+                if (search) search.value = this.query;
+                if (list) list.style.display = 'none';
                 this.render();
             });
         });
@@ -122,11 +120,6 @@ export class GenerateView {
             this.quantity = Math.max(1, parseInt((e.target as HTMLInputElement).value || '1', 10) || 1);
         });
         this.container.querySelector('#btn-generate-now')?.addEventListener('click', () => void this.generate());
-    }
-
-    private refocus(): void {
-        const s = this.container.querySelector<HTMLInputElement>('#gen-product-search');
-        if (s) { s.focus(); try { s.setSelectionRange(s.value.length, s.value.length); } catch {} }
     }
 
     private async generate(): Promise<void> {
